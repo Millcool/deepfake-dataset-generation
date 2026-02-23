@@ -1,0 +1,84 @@
+# Algorithm Tracker
+
+This file tracks all deepfake generation algorithms: completed, in progress, and planned.
+Update this file whenever an algorithm changes status (started, completed, or added to the plan).
+
+---
+
+## Completed
+
+| # | Algorithm | Type | Architecture | Year | Dataset Name | GitLab Repo | Notes |
+|---|-----------|------|-------------|------|-------------|-------------|-------|
+| 1 | FOMM | face-to-face | GAN (keypoint-based motion transfer) | 2019 | FOMM_FFpp | deepfake2025/fomm | First-Order Motion Model |
+| 2 | FSGAN | face-to-face | GAN (reenactment + inpainting) | 2019 | FSGAN_FFpp | — | Face Swapping GAN |
+| 3 | FaceDancer | face-to-face | GAN (AEI-Net + ArcFace) | 2022 | FaceDancer_FFpp | — | Adaptive feature fusion |
+| 4 | LivePortrait | face-to-face | Implicit keypoint (non-diffusion) | 2024 | LivePortrait_FFpp | deepfake2025/liveportrait | Efficient stitching + retargeting |
+| 5 | SimSwap | face-to-face | GAN (ID Injection Module) | 2020 | SimSwap_FFpp | — | Weak feature matching |
+| 6 | inswapper | face-to-face | ONNX (InsightFace) | 2022 | inswapper_FFpp | — | InsightFace pipeline |
+| 7 | DeepFaceLab | face-to-face | Autoencoder (DF architecture) | 2020 | batrutdinov_FFpp_DFL | — | Classic deepfake tool |
+| 8 | SadTalker | audio-to-face | 3DMM + GAN (face renderer) | 2023 | SadTalker_FFpp_vox2 | — | ExpNet + PoseVAE + face vid2vid |
+| 9 | Wav2Lip | audio-to-face | GAN + SyncNet | 2020 | Wav2Lip_FFpp_vox2 | — | Best lip-sync accuracy for its time |
+| 10 | MuseTalk | audio-to-face | Latent Diffusion (VAE + UNet + Whisper) | 2024 | MuseTalk_FFpp_vox2 | deepfake2025/musetalk | Real-time lip sync |
+
+## In Progress
+
+| # | Algorithm | Type | Architecture | Year | Dataset Name | Stage | GPU | Notes |
+|---|-----------|------|-------------|------|-------------|-------|-----|-------|
+| 11 | VideoRetalking | audio-to-face | GAN (cascade: face parsing + lip sync + enhancement) | 2022 | VideoRetalking_FFpp_vox2 | Generation (978/1000, 22 gaps) | GPU-2 | Dogenerating missing |
+| 12 | EchoMimic | audio-to-face | Latent Diffusion (SD + temporal attention + audio conditioning) | 2024 | EchoMimic_FFpp_vox2 | Generation (975/1000, 25 gaps) | GPU-3 | Dogenerating missing |
+| 14 | EchoMimic V3 | audio-to-face | Diffusion Transformer (DiT, Wan2.1-Fun 1.3B + wav2vec2) | 2025 | EchoMimicV3_FFpp_vox2 | Generation (255/1000) | GPU-0 | AAAI 2026, Flash-Pro ~12 GB VRAM |
+
+## Rejected (Preview Quality Unacceptable)
+
+Algorithms that were fully set up on the server, previews were generated, but the output quality was deemed unacceptable for dataset generation.
+
+| # | Algorithm | Type | Architecture | Year | Reason | Notes |
+|---|-----------|------|-------------|------|--------|-------|
+| 13 | Hallo2 | audio-to-face | Diffusion (SD + ReferenceNet + AnimateDiff + audio projection) | 2024 | Неприемлемое качество превью | Установлен, 2 рана превью (male 094 + female 005), результат не удовлетворил |
+| 15 | V-Express | audio-to-face | Diffusion (UNet + ReferenceNet + Wav2Vec2) | 2024 | Неприемлемое качество превью | Установлен, 4 варианта параметров (ref_attn 0.80–0.95, audio_attn 3.0–7.0), губы еле шевелятся, мимика не переносится |
+
+## Planned (Candidates)
+
+Algorithms researched and considered for future generation. Sorted by priority.
+
+### Audio-to-face
+
+| # | Algorithm | Architecture | Year | VRAM | GitHub | Priority | Notes |
+|---|-----------|-------------|------|------|--------|----------|-------|
+| C1 | Hallo (v1) | Diffusion (SD + ReferenceNet + audio proj) | 2024 | ~12 GB | fudan-generative-vision/hallo | High | Fudan Univ., high quality, well-established |
+| C2 | ~~V-Express~~ | ~~Diffusion (UNet + ReferenceNet + Wav2Vec2)~~ | ~~2024~~ | ~~~8 GB~~ | ~~tencent-ailab/V-Express~~ | ~~Rejected~~ | Перенесён в Rejected (#15) |
+| C3 | LatentSync | Latent Diffusion + Whisper + SyncNet | 2024 | 12-20 GB | bytedance/LatentSync | Medium | ByteDance, best lip-sync accuracy |
+| C4 | AniPortrait | SD 1.5 + AnimateDiff + Transformer | 2024 | 10-16 GB | Zejun-Yang/AniPortrait | Medium | Dual-mode: audio + video driven |
+| C5 | Hallo3 | DiT (Video Diffusion Transformer) | 2025 | 16-24 GB | fudan-generative-vision/hallo3 | Low | CVPR 2025, may exceed 15 GB VRAM |
+| C6 | FLOAT | Flow Matching (not diffusion) | 2024 | ~12-16 GB | deepbrainai-research/float | Low | Novel architecture, non-commercial license |
+
+### Face Swap (face-to-face)
+
+| # | Algorithm | Architecture | Year | VRAM | GitHub | Priority | Notes |
+|---|-----------|-------------|------|------|--------|----------|-------|
+| C7 | FaceFusion | Modular ONNX (inswapper/blendswap/etc.) | 2023-25 | ~8 GB | facefusion/facefusion | High | Most mature tool, batch mode built-in |
+| C8 | ReSwapper | PyTorch (open inswapper reproduction) | 2024 | ~4-6 GB | somanchiu/ReSwapper | Medium | Transparent architecture, good for academia |
+| C9 | E4S | StyleGAN regional inversion | 2023-24 | ~8-12 GB | e4s2024/E4S2024 | Medium | CVPR 2023, regional face component swap |
+| C10 | REFace | Stable Diffusion fine-tuned | 2024 | ~10-12 GB | Sanoojan/REFace | Low | WACV 2025, diffusion-based face swap |
+| C11 | SberSwap/GHOST | GAN (AEI-Net + ArcFace) | 2021 | ~6-8 GB | sberbank-ai/sber-swap | Low | Local prototype exists, needs remote setup, old deps |
+
+### Face Reenactment (face-to-face, video-driven)
+
+| # | Algorithm | Architecture | Year | VRAM | GitHub | Priority | Notes |
+|---|-----------|-------------|------|------|--------|----------|-------|
+| C12 | Moore-AnimateAnyone | Diffusion (UNet + ReferenceNet + motion module) | 2024 | >=16 GB | MooreThreads/Moore-AnimateAnyone | Medium | Best open reenactment, tight VRAM fit |
+| C13 | DiffusionAct | Diffusion Autoencoder (DiffAE) | 2024 | ~8-12 GB | StelaBou/Diffusion-Act | Low | IEEE FG 2025, image-level only |
+
+---
+
+## Status Legend
+
+- **Completed** — 1000 videos generated, uploaded to `shared/datasets/`, reproducibility doc written
+- **In Progress** — actively generating or in setup/preview phase
+- **Planned** — researched, candidate for future work
+
+## Priority Legend
+
+- **High** — well-tested, open weights, fits VRAM, clear inference pipeline
+- **Medium** — viable but may need more setup work or has caveats
+- **Low** — interesting but has limitations (VRAM, license, incomplete pipeline)

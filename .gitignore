@@ -1,0 +1,47 @@
+# Auth tokens
+kod.txt
+
+# Temporary debug scripts (root level)
+_tmp_*.py
+
+# IDE / tool caches
+.cache/
+.claude/
+.ipynb_checkpoints/
+
+# Preview videos and samples
+img_df/
+MyStalkExamples/
+
+# Third-party cloned repos (large, have own .git)
+sber/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.eggs/
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Model weights (if any appear locally)
+*.pth
+*.onnx
+*.bin
+*.pkl
+
+# Video files (should not be in repo)
+*.mp4
+*.avi
+*.mov
+*.mkv
+*.webm
+
+# Audio files
+*.wav
+*.m4a
+*.mp3
