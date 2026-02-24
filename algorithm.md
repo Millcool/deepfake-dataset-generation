@@ -19,14 +19,17 @@ Update this file whenever an algorithm changes status (started, completed, or ad
 | 8 | SadTalker | audio-to-face | 3DMM + GAN (face renderer) | 2023 | SadTalker_FFpp_vox2 | — | ExpNet + PoseVAE + face vid2vid |
 | 9 | Wav2Lip | audio-to-face | GAN + SyncNet | 2020 | Wav2Lip_FFpp_vox2 | — | Best lip-sync accuracy for its time |
 | 10 | MuseTalk | audio-to-face | Latent Diffusion (VAE + UNet + Whisper) | 2024 | MuseTalk_FFpp_vox2 | deepfake2025/musetalk | Real-time lip sync |
+| 12 | EchoMimic | audio-to-face | Latent Diffusion (SD + temporal attention + audio conditioning) | 2024 | EchoMimic_FFpp_vox2 | — | 1000/1000 в shared, workspace удалён |
 
 ## In Progress
 
 | # | Algorithm | Type | Architecture | Year | Dataset Name | Stage | GPU | Notes |
 |---|-----------|------|-------------|------|-------------|-------|-----|-------|
-| 11 | VideoRetalking | audio-to-face | GAN (cascade: face parsing + lip sync + enhancement) | 2022 | VideoRetalking_FFpp_vox2 | Generation (978/1000, 22 gaps) | GPU-2 | Dogenerating missing |
-| 12 | EchoMimic | audio-to-face | Latent Diffusion (SD + temporal attention + audio conditioning) | 2024 | EchoMimic_FFpp_vox2 | Generation (975/1000, 25 gaps) | GPU-3 | Dogenerating missing |
-| 14 | EchoMimic V3 | audio-to-face | Diffusion Transformer (DiT, Wan2.1-Fun 1.3B + wav2vec2) | 2025 | EchoMimicV3_FFpp_vox2 | Generation (255/1000) | GPU-0 | AAAI 2026, Flash-Pro ~12 GB VRAM |
+| 11 | VideoRetalking | audio-to-face | GAN (cascade: face parsing + lip sync + enhancement) | 2022 | VideoRetalking_FFpp_vox2 | Generation (978/1000, 22 gaps) | — | Ждёт свободную GPU для догенерации 22 видео |
+| 14 | EchoMimic V3 | audio-to-face | Diffusion Transformer (DiT, Wan2.1-Fun 1.3B + wav2vec2) | 2025 | EchoMimicV3_FFpp_vox2 | Generation (311/1000, resumed from 308) | GPU-0 | AAAI 2026, Flash-Pro ~3.4 vid/hr, ETA ~8.5 дней |
+| 16 | BlendSwap (FaceFusion) | face-to-face | ONNX (BlendSwap 256, via FaceFusion) | 2024 | BlendSwap_FFpp | Generation (206/1000, male first) | GPU-1 | ~30 vid/hr, FaceFusion framework, face_swapper processor |
+| 17 | GHOST (FaceFusion) | face-to-face | GAN (AEI-Net + ArcFace, ghost_1_256 via FaceFusion) | 2021 | GHOST_FFpp | Generation (342/1000, male first) | GPU-2 | ~50 vid/hr, FaceFusion framework, face_swapper processor |
+| 18 | UniFace (FaceFusion) | face-to-face | ONNX (UniFace 256, via FaceFusion) | 2024 | UniFace_FFpp | Generation (80/1000, male first) | GPU-3 | ~12 vid/hr, FaceFusion framework, face_swapper processor |
 
 ## Rejected (Preview Quality Unacceptable)
 
@@ -66,11 +69,11 @@ Algorithms researched and considered for future generation. Sorted by priority.
 
 | # | Algorithm | Architecture | Year | VRAM | GitHub | Priority | Notes |
 |---|-----------|-------------|------|------|--------|----------|-------|
-| C7 | FaceFusion | Modular ONNX (inswapper/blendswap/etc.) | 2023-25 | ~8 GB | facefusion/facefusion | High | Most mature tool, batch mode built-in |
+| C7 | ~~FaceFusion~~ | ~~Modular ONNX (inswapper/blendswap/etc.)~~ | ~~2023-25~~ | ~~8 GB~~ | ~~facefusion/facefusion~~ | ~~In Progress~~ | Запущены 3 модели: BlendSwap (#16), GHOST (#17), UniFace (#18) |
 | C8 | ReSwapper | PyTorch (open inswapper reproduction) | 2024 | ~4-6 GB | somanchiu/ReSwapper | Medium | Transparent architecture, good for academia |
 | C9 | E4S | StyleGAN regional inversion | 2023-24 | ~8-12 GB | e4s2024/E4S2024 | Medium | CVPR 2023, regional face component swap |
 | C10 | REFace | Stable Diffusion fine-tuned | 2024 | ~10-12 GB | Sanoojan/REFace | Low | WACV 2025, diffusion-based face swap |
-| C11 | SberSwap/GHOST | GAN (AEI-Net + ArcFace) | 2021 | ~6-8 GB | sberbank-ai/sber-swap | Low | Local prototype exists, needs remote setup, old deps |
+| C11 | ~~SberSwap/GHOST~~ | ~~GAN (AEI-Net + ArcFace)~~ | ~~2021~~ | ~~6-8 GB~~ | ~~sberbank-ai/sber-swap~~ | ~~In Progress~~ | Запущен через FaceFusion как GHOST (#17) |
 
 ### Face Reenactment (face-to-face, video-driven)
 
