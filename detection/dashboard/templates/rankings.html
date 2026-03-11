@@ -1,0 +1,831 @@
+{% extends "base.html" %}
+{% block title %}Рейтинги - Deepfake Detection Dashboard{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Рейтинги</h1>
+    <p class="subtitle">Агрегированные результаты по всем прогонам</p>
+</div>
+
+<!-- Tab switcher -->
+<div class="tab-bar">
+    <button class="tab-btn active" data-tab="detectors" onclick="switchTab('detectors')">Детекторы</button>
+    <button class="tab-btn" data-tab="datasets" onclick="switchTab('datasets')">Датасеты</button>
+    <button class="tab-btn" data-tab="testset" onclick="switchTab('testset')">Тестовый набор</button>
+    <button class="tab-btn" data-tab="difficult" onclick="switchTab('difficult')">Трудные видео</button>
+</div>
+
+<!-- ── Detectors Tab ── -->
+<div id="tab-detectors" class="tab-content active">
+    <!-- Filter bar -->
+    <div class="filter-bar">
+        <span class="filter-label">Тип датасета:</span>
+        <button class="filter-chip active" onclick="setDetFilter('type', 'all', this)">Все</button>
+        <button class="filter-chip" onclick="setDetFilter('type', 'face-to-face', this)">face-to-face</button>
+        <button class="filter-chip" onclick="setDetFilter('type', 'audio-to-face', this)">audio-to-face</button>
+        <span class="filter-label" style="margin-left: 1rem;">Год датасета:</span>
+        <span id="det-year-chips"></span>
+    </div>
+
+    <div id="det-table-container">
+    {% if by_detector %}
+    <div class="table-wrapper">
+        <table class="runs-table ranking-table">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Детектор</th>
+                    <th>Сред. AUC</th>
+                    <th>Сред. Accuracy</th>
+                    <th>Сред. EER</th>
+                    <th>Сред. AP</th>
+                    <th>Сред. Precision</th>
+                    <th>Сред. Recall</th>
+                    <th>Сред. F1</th>
+                    <th>Датасеты</th>
+                    <th>Видео</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in by_detector %}
+                {% set info = detector_catalog.get(item.name, {}) %}
+                <tr class="ranking-row" onclick="toggleDetail('det-{{ loop.index }}')">
+                    <td>
+                        <span class="rank-badge rank-{{ item.rank }}">{{ item.rank }}</span>
+                    </td>
+                    <td>
+                        <strong>{{ info.get('name', item.name) }}</strong>
+                        {% if info %}
+                        <span class="info-btn" onclick="event.stopPropagation(); toggleInfo('det-info-{{ loop.index }}')" title="О детекторе">i</span>
+                        {% endif %}
+                    </td>
+                    <td class="{{ 'auc-high' if item.auc and item.auc >= 0.9 else ('auc-mid' if item.auc and item.auc >= 0.7 else 'auc-low') }}">
+                        {{ "%.4f"|format(item.auc) if item.auc is not none else "N/A" }}
+                    </td>
+                    <td>{{ "%.4f"|format(item.accuracy) if item.accuracy is not none else "N/A" }}</td>
+                    <td>{{ "%.4f"|format(item.eer) if item.eer is not none else "N/A" }}</td>
+                    <td>{{ "%.4f"|format(item.ap) if item.ap is not none else "N/A" }}</td>
+                    <td>{{ "%.4f"|format(item.precision) if item.precision is not none else "N/A" }}</td>
+                    <td>{{ "%.4f"|format(item.recall) if item.recall is not none else "N/A" }}</td>
+                    <td>{{ "%.4f"|format(item.f1) if item.f1 is not none else "N/A" }}</td>
+                    <td>{{ item.n_datasets }}</td>
+                    <td>{{ item.total_videos }}</td>
+                    <td class="expand-btn">&#9660;</td>
+                </tr>
+                {% if info %}
+                <tr class="info-row" id="det-info-{{ loop.index }}">
+                    <td colspan="12">
+                        <div class="info-card">
+                            <div class="info-card-header">
+                                <strong>{{ info.get('name', item.name) }}</strong>
+                                {% if info.get('year') %}<span class="info-year">{{ info.year }}</span>{% endif %}
+                            </div>
+                            <p class="info-description">{{ info.get('description', '') }}</p>
+                            <div class="info-links">
+                                {% if info.get('github') %}
+                                <a href="{{ info.github }}" target="_blank" class="info-link">GitHub</a>
+                                {% endif %}
+                                {% if info.get('paper') %}
+                                <a href="{{ info.paper }}" target="_blank" class="info-link">Paper</a>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </td>
+                </tr>
+                {% endif %}
+                <tr class="detail-row" id="det-{{ loop.index }}">
+                    <td colspan="12">
+                        <table class="detail-table">
+                            <thead>
+                                <tr>
+                                    <th>Датасет</th>
+                                    <th>AUC</th>
+                                    <th>Accuracy</th>
+                                    <th>EER</th>
+                                    <th>AP</th>
+                                    <th>Precision</th>
+                                    <th>Recall</th>
+                                    <th>F1</th>
+                                    <th>Видео</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for run in item.runs %}
+                                <tr>
+                                    <td>{{ run.dataset }}</td>
+                                    <td class="{{ 'auc-high' if run.auc and run.auc >= 0.9 else ('auc-mid' if run.auc and run.auc >= 0.7 else 'auc-low') }}">
+                                        {{ "%.4f"|format(run.auc) if run.auc is not none else "N/A" }}
+                                    </td>
+                                    <td>{{ "%.4f"|format(run.accuracy) if run.accuracy is not none else "N/A" }}</td>
+                                    <td>{{ "%.4f"|format(run.eer) if run.eer is not none else "N/A" }}</td>
+                                    <td>{{ "%.4f"|format(run.ap) if run.ap is not none else "N/A" }}</td>
+                                    <td>{{ "%.4f"|format(run.precision) if run.precision is not none else "N/A" }}</td>
+                                    <td>{{ "%.4f"|format(run.recall) if run.recall is not none else "N/A" }}</td>
+                                    <td>{{ "%.4f"|format(run.f1) if run.f1 is not none else "N/A" }}</td>
+                                    <td>{{ run.total_videos }}</td>
+                                    <td><a href="{{ url_for('run_detail', run_id=run.id) }}" class="btn btn-sm">Подробнее</a></td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <p>Нет данных по детекторам.</p>
+    </div>
+    {% endif %}
+    </div>
+</div>
+
+<!-- ── Datasets Tab ── -->
+<div id="tab-datasets" class="tab-content">
+    <!-- Filter bar -->
+    <div class="filter-bar">
+        <span class="filter-label">Год детектора:</span>
+        <button class="filter-chip active" onclick="setDsFilter('detYear', 'all', this)">Все</button>
+        <span id="ds-year-chips"></span>
+    </div>
+
+    <div id="ds-table-container">
+    {% if by_dataset %}
+    <div class="table-wrapper">
+        <table class="runs-table ranking-table">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Датасет (алгоритм)</th>
+                    <th>Сред. AUC</th>
+                    <th>Сред. Accuracy</th>
+                    <th>Сред. EER</th>
+                    <th>Сред. AP</th>
+                    <th>Сред. Precision</th>
+                    <th>Сред. Recall</th>
+                    <th>Сред. F1</th>
+                    <th>Детекторы</th>
+                    <th>Видео</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in by_dataset %}
+                {% set info = algorithm_catalog.get(item.name, {}) %}
+                <tr class="ranking-row" onclick="toggleDetail('ds-{{ loop.index }}')">
+                    <td>
+                        <span class="rank-badge rank-{{ item.rank }}">{{ item.rank }}</span>
+                    </td>
+                    <td>
+                        <strong>{{ item.name }}</strong>
+                        {% if info %}
+                        <span class="info-btn" onclick="event.stopPropagation(); toggleInfo('ds-info-{{ loop.index }}')" title="Об алгоритме">i</span>
+                        {% endif %}
+                        {% if info.get('type') %}
+                        <span class="algo-type algo-type-{{ 'audio' if 'audio' in info.type else 'face' }}">{{ info.type }}</span>
+                        {% endif %}
+                    </td>
+                    <td class="{{ 'auc-high' if item.auc and item.auc >= 0.9 else ('auc-mid' if item.auc and item.auc >= 0.7 else 'auc-low') }}">
+                        {{ "%.4f"|format(item.auc) if item.auc is not none else "N/A" }}
+                    </td>
+                    <td>{{ "%.4f"|format(item.accuracy) if item.accuracy is not none else "N/A" }}</td>
+                    <td>{{ "%.4f"|format(item.eer) if item.eer is not none else "N/A" }}</td>
+                    <td>{{ "%.4f"|format(item.ap) if item.ap is not none else "N/A" }}</td>
+                    <td>{{ "%.4f"|format(item.precision) if item.precision is not none else "N/A" }}</td>
+                    <td>{{ "%.4f"|format(item.recall) if item.recall is not none else "N/A" }}</td>
+                    <td>{{ "%.4f"|format(item.f1) if item.f1 is not none else "N/A" }}</td>
+                    <td>{{ item.n_detectors }}</td>
+                    <td>{{ item.total_videos }}</td>
+                    <td class="expand-btn">&#9660;</td>
+                </tr>
+                {% if info %}
+                <tr class="info-row" id="ds-info-{{ loop.index }}">
+                    <td colspan="12">
+                        <div class="info-card">
+                            <div class="info-card-header">
+                                <strong>{{ info.get('full_name', info.get('name', item.name)) }}</strong>
+                                {% if info.get('year') %}<span class="info-year">{{ info.year }}</span>{% endif %}
+                                {% if info.get('type') %}
+                                <span class="algo-type algo-type-{{ 'audio' if 'audio' in info.type else 'face' }}">{{ info.type }}</span>
+                                {% endif %}
+                            </div>
+                            {% if info.get('architecture') %}
+                            <p class="info-architecture">{{ info.architecture }}</p>
+                            {% endif %}
+                            <div class="info-links">
+                                {% if info.get('github') %}
+                                <a href="{{ info.github }}" target="_blank" class="info-link">GitHub</a>
+                                {% endif %}
+                                {% if info.get('paper') %}
+                                <a href="{{ info.paper }}" target="_blank" class="info-link">Paper</a>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </td>
+                </tr>
+                {% endif %}
+                <tr class="detail-row" id="ds-{{ loop.index }}">
+                    <td colspan="12">
+                        <table class="detail-table">
+                            <thead>
+                                <tr>
+                                    <th>Детектор</th>
+                                    <th>AUC</th>
+                                    <th>Accuracy</th>
+                                    <th>EER</th>
+                                    <th>AP</th>
+                                    <th>Precision</th>
+                                    <th>Recall</th>
+                                    <th>F1</th>
+                                    <th>Видео</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for run in item.runs %}
+                                <tr>
+                                    <td>{{ run.detector }}</td>
+                                    <td class="{{ 'auc-high' if run.auc and run.auc >= 0.9 else ('auc-mid' if run.auc and run.auc >= 0.7 else 'auc-low') }}">
+                                        {{ "%.4f"|format(run.auc) if run.auc is not none else "N/A" }}
+                                    </td>
+                                    <td>{{ "%.4f"|format(run.accuracy) if run.accuracy is not none else "N/A" }}</td>
+                                    <td>{{ "%.4f"|format(run.eer) if run.eer is not none else "N/A" }}</td>
+                                    <td>{{ "%.4f"|format(run.ap) if run.ap is not none else "N/A" }}</td>
+                                    <td>{{ "%.4f"|format(run.precision) if run.precision is not none else "N/A" }}</td>
+                                    <td>{{ "%.4f"|format(run.recall) if run.recall is not none else "N/A" }}</td>
+                                    <td>{{ "%.4f"|format(run.f1) if run.f1 is not none else "N/A" }}</td>
+                                    <td>{{ run.total_videos }}</td>
+                                    <td><a href="{{ url_for('run_detail', run_id=run.id) }}" class="btn btn-sm">Подробнее</a></td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <p>Нет данных по датасетам.</p>
+    </div>
+    {% endif %}
+    </div>
+</div>
+
+<!-- ── Test Set Tab ── -->
+<div id="tab-testset" class="tab-content">
+    <div class="testset-panel">
+        <h3 style="margin-bottom: 0.75rem; font-size: 1rem;">Выберите датасеты для тестовой выборки</h3>
+
+        <div class="filter-bar" style="margin-bottom: 0.75rem;">
+            <span class="filter-label">Быстрые фильтры:</span>
+            <button class="filter-chip" onclick="testsetQuickFilter('all')">Все</button>
+            <button class="filter-chip" onclick="testsetQuickFilter('none')">Ни одного</button>
+            <button class="filter-chip" onclick="testsetQuickFilter('face-to-face')">face-to-face</button>
+            <button class="filter-chip" onclick="testsetQuickFilter('audio-to-face')">audio-to-face</button>
+            <span id="testset-year-chips"></span>
+        </div>
+
+        <div class="testset-grid" id="testset-grid"></div>
+
+        <div class="testset-summary" id="testset-summary">Выбрано: 0 из 0 датасетов</div>
+
+        <button class="btn btn-primary" onclick="calculateTestsetRanking()">Рассчитать рейтинг</button>
+    </div>
+
+    <div class="testset-results" id="testset-results"></div>
+</div>
+
+<!-- ── Difficult Videos Tab ── -->
+<div id="tab-difficult" class="tab-content">
+    <div id="va-content">
+        <div class="va-loader" id="va-loader">
+            <div class="spinner"></div>
+            <div>Загрузка анализа видео...</div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const allRuns = {{ all_runs_json | safe }};
+const algoCatalog = {{ algorithm_catalog_json | safe }};
+const detCatalog = {{ detector_catalog_json | safe }};
+
+// ── Tab switching ──
+function switchTab(tab) {
+    document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+    document.getElementById('tab-' + tab).classList.add('active');
+    document.querySelector('.tab-btn[data-tab="' + tab + '"]').classList.add('active');
+    if (tab === 'difficult') loadVideoAnalysis();
+}
+
+function toggleDetail(id) {
+    const row = document.getElementById(id);
+    row.classList.toggle('expanded');
+    const parentRow = row.previousElementSibling;
+    // Skip info-row if present
+    const rankingRow = parentRow.classList.contains('info-row') ? parentRow.previousElementSibling : parentRow;
+    const arrow = rankingRow.querySelector('.expand-btn');
+    arrow.innerHTML = row.classList.contains('expanded') ? '&#9650;' : '&#9660;';
+}
+
+function toggleInfo(id) {
+    const row = document.getElementById(id);
+    row.classList.toggle('expanded');
+}
+
+// ── Shared helpers ──
+function fmt(v) { return v !== null && v !== undefined ? v.toFixed(4) : 'N/A'; }
+function aucClass(v) {
+    if (v === null || v === undefined) return '';
+    return v >= 0.9 ? 'auc-high' : (v >= 0.7 ? 'auc-mid' : 'auc-low');
+}
+
+function aggregateMetrics(runs) {
+    const keys = ['auc', 'accuracy', 'eer', 'ap', 'precision', 'recall', 'f1'];
+    const agg = {};
+    for (const k of keys) {
+        const vals = runs.map(r => r[k]).filter(v => v !== null && v !== undefined);
+        agg[k] = vals.length > 0 ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
+    }
+    agg.total_videos = runs.reduce((s, r) => s + (r.total_videos || 0), 0);
+    return agg;
+}
+
+function buildRankingTable(groups, groupBy) {
+    const items = [];
+    for (const [key, runs] of Object.entries(groups)) {
+        const agg = aggregateMetrics(runs);
+        agg.name = key;
+        if (groupBy === 'detector') {
+            agg.n_datasets = new Set(runs.map(r => r.dataset)).size;
+        } else {
+            agg.n_detectors = new Set(runs.map(r => r.detector)).size;
+        }
+        agg.runs = runs.sort((a, b) => (b.auc || 0) - (a.auc || 0));
+        items.push(agg);
+    }
+
+    if (groupBy === 'detector') {
+        items.sort((a, b) => (b.auc || 0) - (a.auc || 0));
+    } else {
+        // Datasets: lower AUC = harder to detect = better algorithm
+        items.sort((a, b) => (a.auc || 0) - (b.auc || 0));
+    }
+    items.forEach((item, i) => item.rank = i + 1);
+    return items;
+}
+
+function renderRankingHTML(items, groupBy) {
+    if (items.length === 0) return '<div class="empty-state"><p>Нет данных для выбранных фильтров.</p></div>';
+
+    const countCol = groupBy === 'detector' ? 'Датасеты' : 'Детекторы';
+    const detailCol = groupBy === 'detector' ? 'dataset' : 'detector';
+    const countKey = groupBy === 'detector' ? 'n_datasets' : 'n_detectors';
+
+    let html = '<div class="table-wrapper"><table class="runs-table ranking-table"><thead><tr>';
+    html += '<th>#</th><th>' + (groupBy === 'detector' ? 'Детектор' : 'Датасет') + '</th>';
+    html += '<th>Сред. AUC</th><th>Сред. Accuracy</th><th>Сред. EER</th><th>Сред. AP</th>';
+    html += '<th>Сред. Precision</th><th>Сред. Recall</th><th>Сред. F1</th>';
+    html += '<th>' + countCol + '</th><th>Видео</th><th></th>';
+    html += '</tr></thead><tbody>';
+
+    items.forEach((item, idx) => {
+        const detailId = 'dyn-' + groupBy + '-' + idx;
+        const catInfo = groupBy === 'detector' ? (detCatalog[item.name] || {}) : (algoCatalog[item.name] || {});
+        const displayName = catInfo.name || item.name;
+
+        html += '<tr class="ranking-row" onclick="toggleDetail(\'' + detailId + '\')">';
+        html += '<td><span class="rank-badge rank-' + item.rank + '">' + item.rank + '</span></td>';
+        html += '<td><strong>' + displayName + '</strong>';
+        if (groupBy === 'dataset' && catInfo.type) {
+            const typeClass = catInfo.type.includes('audio') ? 'audio' : 'face';
+            html += ' <span class="algo-type algo-type-' + typeClass + '">' + catInfo.type + '</span>';
+        }
+        html += '</td>';
+        html += '<td class="' + aucClass(item.auc) + '">' + fmt(item.auc) + '</td>';
+        html += '<td>' + fmt(item.accuracy) + '</td>';
+        html += '<td>' + fmt(item.eer) + '</td>';
+        html += '<td>' + fmt(item.ap) + '</td>';
+        html += '<td>' + fmt(item.precision) + '</td>';
+        html += '<td>' + fmt(item.recall) + '</td>';
+        html += '<td>' + fmt(item.f1) + '</td>';
+        html += '<td>' + (item[countKey] || 0) + '</td>';
+        html += '<td>' + (item.total_videos || 0) + '</td>';
+        html += '<td class="expand-btn">&#9660;</td>';
+        html += '</tr>';
+
+        // Detail sub-table
+        html += '<tr class="detail-row" id="' + detailId + '"><td colspan="12">';
+        html += '<table class="detail-table"><thead><tr>';
+        html += '<th>' + (groupBy === 'detector' ? 'Датасет' : 'Детектор') + '</th>';
+        html += '<th>AUC</th><th>Accuracy</th><th>EER</th><th>AP</th>';
+        html += '<th>Precision</th><th>Recall</th><th>F1</th><th>Видео</th><th></th>';
+        html += '</tr></thead><tbody>';
+
+        for (const run of item.runs) {
+            html += '<tr>';
+            html += '<td>' + (run[detailCol] || '') + '</td>';
+            html += '<td class="' + aucClass(run.auc) + '">' + fmt(run.auc) + '</td>';
+            html += '<td>' + fmt(run.accuracy) + '</td>';
+            html += '<td>' + fmt(run.eer) + '</td>';
+            html += '<td>' + fmt(run.ap) + '</td>';
+            html += '<td>' + fmt(run.precision) + '</td>';
+            html += '<td>' + fmt(run.recall) + '</td>';
+            html += '<td>' + fmt(run.f1) + '</td>';
+            html += '<td>' + (run.total_videos || 0) + '</td>';
+            html += '<td><a href="/run/' + run.id + '" class="btn btn-sm">Подробнее</a></td>';
+            html += '</tr>';
+        }
+        html += '</tbody></table></td></tr>';
+    });
+
+    html += '</tbody></table></div>';
+    return html;
+}
+
+// ── Feature 2: Filters for Detectors tab ──
+const detFilters = { type: 'all', years: [] };
+
+// Gather unique dataset years from catalog
+const datasetYears = [...new Set(Object.values(algoCatalog).map(a => a.year).filter(Boolean))].sort();
+const detectorYears = [...new Set(Object.values(detCatalog).map(d => d.year).filter(Boolean))].sort();
+
+(function initDetYearChips() {
+    const container = document.getElementById('det-year-chips');
+    datasetYears.forEach(y => {
+        const btn = document.createElement('button');
+        btn.className = 'filter-chip';
+        btn.textContent = y;
+        btn.onclick = function() { toggleDetYearFilter(y, this); };
+        container.appendChild(btn);
+    });
+})();
+
+function setDetFilter(key, value, btn) {
+    if (key === 'type') {
+        detFilters.type = value;
+        // Update active state for type chips
+        btn.parentElement.querySelectorAll('.filter-chip').forEach(c => {
+            if (c.textContent === 'Все' || c.textContent === 'face-to-face' || c.textContent === 'audio-to-face') {
+                c.classList.remove('active');
+            }
+        });
+        btn.classList.add('active');
+    }
+    applyDetFilters();
+}
+
+function toggleDetYearFilter(year, btn) {
+    // Deactivate "Все" for years — years are multi-select toggle
+    const idx = detFilters.years.indexOf(year);
+    if (idx >= 0) {
+        detFilters.years.splice(idx, 1);
+        btn.classList.remove('active');
+    } else {
+        detFilters.years.push(year);
+        btn.classList.add('active');
+    }
+    applyDetFilters();
+}
+
+function applyDetFilters() {
+    let filtered = allRuns.filter(r => {
+        if (detFilters.type !== 'all') {
+            const info = algoCatalog[r.dataset];
+            if (!info || !info.type || !info.type.includes(detFilters.type)) return false;
+        }
+        if (detFilters.years.length > 0) {
+            const info = algoCatalog[r.dataset];
+            if (!info || !detFilters.years.includes(info.year)) return false;
+        }
+        return true;
+    });
+
+    const groups = {};
+    for (const r of filtered) {
+        if (!r.detector) continue;
+        (groups[r.detector] = groups[r.detector] || []).push(r);
+    }
+
+    const items = buildRankingTable(groups, 'detector');
+    document.getElementById('det-table-container').innerHTML = renderRankingHTML(items, 'detector');
+}
+
+// ── Feature 2: Filters for Datasets tab ──
+const dsFilters = { detYears: [] };
+
+(function initDsYearChips() {
+    const container = document.getElementById('ds-year-chips');
+    detectorYears.forEach(y => {
+        const btn = document.createElement('button');
+        btn.className = 'filter-chip';
+        btn.textContent = y;
+        btn.onclick = function() { toggleDsYearFilter(y, this); };
+        container.appendChild(btn);
+    });
+})();
+
+function setDsFilter(key, value, btn) {
+    if (key === 'detYear' && value === 'all') {
+        dsFilters.detYears = [];
+        btn.parentElement.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+        btn.classList.add('active');
+        applyDsFilters();
+    }
+}
+
+function toggleDsYearFilter(year, btn) {
+    // Deactivate "Все" chip
+    const allBtn = btn.parentElement.parentElement.querySelector('.filter-chip.active');
+    if (allBtn && allBtn.textContent === 'Все') allBtn.classList.remove('active');
+
+    const idx = dsFilters.detYears.indexOf(year);
+    if (idx >= 0) {
+        dsFilters.detYears.splice(idx, 1);
+        btn.classList.remove('active');
+        // If none selected, reactivate "Все"
+        if (dsFilters.detYears.length === 0) {
+            btn.parentElement.parentElement.querySelector('.filter-chip').classList.add('active');
+        }
+    } else {
+        dsFilters.detYears.push(year);
+        btn.classList.add('active');
+    }
+    applyDsFilters();
+}
+
+function applyDsFilters() {
+    let filtered = allRuns.filter(r => {
+        if (dsFilters.detYears.length > 0) {
+            const info = detCatalog[r.detector];
+            if (!info || !dsFilters.detYears.includes(info.year)) return false;
+        }
+        return true;
+    });
+
+    const groups = {};
+    for (const r of filtered) {
+        if (!r.dataset) continue;
+        (groups[r.dataset] = groups[r.dataset] || []).push(r);
+    }
+
+    const items = buildRankingTable(groups, 'dataset');
+    document.getElementById('ds-table-container').innerHTML = renderRankingHTML(items, 'dataset');
+}
+
+// ── Feature 3: Test Set tab ──
+const uniqueDatasets = [...new Set(allRuns.map(r => r.dataset).filter(Boolean))].sort();
+
+(function initTestsetTab() {
+    // Year chips
+    const yearContainer = document.getElementById('testset-year-chips');
+    datasetYears.forEach(y => {
+        const btn = document.createElement('button');
+        btn.className = 'filter-chip';
+        btn.textContent = y;
+        btn.onclick = function() { testsetQuickFilter(String(y)); };
+        yearContainer.appendChild(btn);
+    });
+
+    // Checkboxes
+    const grid = document.getElementById('testset-grid');
+    uniqueDatasets.forEach(ds => {
+        const info = algoCatalog[ds] || {};
+        const div = document.createElement('div');
+        div.className = 'testset-item';
+
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.id = 'ts-' + ds;
+        cb.value = ds;
+        cb.checked = true;
+        cb.onchange = updateTestsetSummary;
+
+        const label = document.createElement('label');
+        label.htmlFor = 'ts-' + ds;
+        label.textContent = ds;
+
+        const meta = document.createElement('span');
+        meta.className = 'testset-meta';
+        const parts = [];
+        if (info.type) parts.push(info.type);
+        if (info.year) parts.push(info.year);
+        if (parts.length) meta.textContent = ' (' + parts.join(', ') + ')';
+
+        div.appendChild(cb);
+        div.appendChild(label);
+        div.appendChild(meta);
+        grid.appendChild(div);
+    });
+
+    updateTestsetSummary();
+})();
+
+function updateTestsetSummary() {
+    const checked = document.querySelectorAll('#testset-grid input:checked').length;
+    document.getElementById('testset-summary').textContent =
+        'Выбрано: ' + checked + ' из ' + uniqueDatasets.length + ' датасетов';
+}
+
+function testsetQuickFilter(mode) {
+    const checkboxes = document.querySelectorAll('#testset-grid input[type="checkbox"]');
+    if (mode === 'all') {
+        checkboxes.forEach(cb => cb.checked = true);
+    } else if (mode === 'none') {
+        checkboxes.forEach(cb => cb.checked = false);
+    } else if (mode === 'face-to-face' || mode === 'audio-to-face') {
+        checkboxes.forEach(cb => {
+            const info = algoCatalog[cb.value] || {};
+            cb.checked = info.type && info.type.includes(mode);
+        });
+    } else {
+        // Year filter
+        const year = parseInt(mode);
+        if (!isNaN(year)) {
+            checkboxes.forEach(cb => {
+                const info = algoCatalog[cb.value] || {};
+                cb.checked = info.year === year;
+            });
+        }
+    }
+    updateTestsetSummary();
+}
+
+// ── Feature 4: Difficult Videos tab ──
+let vaData = null;
+let vaLoaded = false;
+
+function loadVideoAnalysis() {
+    if (vaLoaded) return;
+    vaLoaded = true;
+    fetch('/api/video-analysis')
+        .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
+        .then(data => { vaData = data; renderVideoAnalysis(); })
+        .catch(err => {
+            document.getElementById('va-content').innerHTML =
+                '<div class="empty-state"><p>Ошибка загрузки: ' + err.message + '</p></div>';
+        });
+}
+
+function renderVideoAnalysis() {
+    const d = vaData;
+    const s = d.summary;
+    const ac = d.always_correct;
+    let html = '';
+
+    // Summary cards
+    html += '<div class="video-analysis-summary">';
+    html += summaryCard(s.total_runs, 'Прогонов');
+    html += summaryCard(s.total_real_videos, 'Оригиналов');
+    html += summaryCard(s.fp_videos_count, 'С ошибками (FP)');
+    html += summaryCard(ac.real_count, 'Всегда верно');
+    html += '</div>';
+
+    // FP section
+    html += '<div class="video-analysis-section">';
+    html += '<h3>Оригиналы, часто определяемые как фейки (ложные тревоги)</h3>';
+    html += renderVideoGrid(d.false_positives, 'fp');
+    html += '</div>';
+
+    // FN section with dataset selector
+    const datasets = Object.keys(d.false_negatives_by_dataset).sort();
+    if (datasets.length > 0) {
+        html += '<div class="video-analysis-section">';
+        html += '<h3>Фейки, часто определяемые как оригиналы (пропущенные)</h3>';
+        html += '<select class="va-dataset-select" id="va-ds-select" onchange="switchFnDataset(this.value)">';
+        datasets.forEach((ds, i) => {
+            const count = d.false_negatives_by_dataset[ds].length;
+            html += '<option value="' + ds + '"' + (i === 0 ? ' selected' : '') + '>' + ds + ' (' + count + ')</option>';
+        });
+        html += '</select>';
+        datasets.forEach((ds, i) => {
+            html += '<div class="va-fn-dataset" id="va-fn-' + css_id(ds) + '" style="' + (i === 0 ? '' : 'display:none') + '">';
+            html += renderVideoGrid(d.false_negatives_by_dataset[ds], 'fn-' + css_id(ds));
+            html += '</div>';
+        });
+        html += '</div>';
+    }
+
+    // Always correct
+    html += '<div class="video-analysis-section">';
+    html += '<div class="va-always-correct">';
+    html += '<h3>Всегда верно классифицированные</h3>';
+    html += '<div class="va-ac-stat">Оригиналы: <strong>' + ac.real_count + '</strong> из ' + ac.total_real + ' (' + pct(ac.real_count, ac.total_real) + ') всегда определены верно</div>';
+    html += '<div style="margin-top:0.5rem; font-size:0.9rem; color:#636e72">Фейки по датасетам:</div>';
+    html += '<div class="va-ac-datasets">';
+    for (const ds of Object.keys(ac.fake_by_dataset || {}).sort()) {
+        const total = (ac.total_fake_by_dataset || {})[ds] || '?';
+        html += '<span class="va-ac-chip">' + ds + ': ' + ac.fake_by_dataset[ds] + '/' + total + '</span>';
+    }
+    html += '</div></div></div>';
+
+    document.getElementById('va-content').innerHTML = html;
+}
+
+function summaryCard(value, label) {
+    return '<div class="va-summary-card"><div class="va-summary-value">' + value + '</div><div class="va-summary-label">' + label + '</div></div>';
+}
+
+function css_id(s) { return s.replace(/[^a-zA-Z0-9]/g, '_'); }
+function pct(a, b) { return b > 0 ? (a / b * 100).toFixed(1) + '%' : '0%'; }
+
+function renderVideoGrid(items, prefix) {
+    if (!items || items.length === 0) return '<div class="empty-state"><p>Нет данных.</p></div>';
+    let html = '<div class="video-analysis-grid" id="grid-' + prefix + '">';
+    items.forEach((item, idx) => {
+        const cardId = prefix + '-' + idx;
+        html += '<div class="video-card" onclick="toggleVideoDetail(\'' + cardId + '\')">';
+        if (item.thumbnail) {
+            html += '<img class="video-card-thumb" src="/api/run/' + item.thumbnail.run_id + '/thumbnails/' + item.thumbnail.filename + '" '
+                  + 'alt="' + item.basename + '" loading="lazy" '
+                  + 'onclick="event.stopPropagation(); showThumbModal(this.src)">';
+        } else {
+            html += '<div class="thumb-placeholder-large">' + item.basename + '</div>';
+        }
+        html += '<div class="video-card-info">';
+        html += '<div class="video-card-name">' + item.basename + '.mp4</div>';
+        const lblClass = item.label === 'real' ? 'real-label' : 'fake-label';
+        const lblText = item.label === 'real' ? 'Оригинал' : 'Фейк';
+        html += '<div class="video-card-label ' + lblClass + '">' + lblText + '</div>';
+        const errPct = (item.error_rate * 100).toFixed(1);
+        html += '<div class="error-rate-bar"><div class="error-rate-bar-fill" style="width:' + errPct + '%"></div></div>';
+        html += '<div class="error-rate-text">' + item.error_count + '/' + item.total_runs + ' ошибок (' + errPct + '%)</div>';
+        html += '</div></div>';
+
+        // Detail panel (injected after card, spans full grid width via JS)
+        html += '<div class="video-detail" id="vd-' + cardId + '">';
+        html += '<table><thead><tr><th>Детектор</th><th>Датасет</th><th>Score</th><th>Порог</th><th>Результат</th></tr></thead><tbody>';
+        for (const r of item.results) {
+            const rowClass = r.correct ? '' : ' class="error-row"';
+            const res = r.correct ? 'Верно' : 'Ошибка';
+            html += '<tr' + rowClass + '>';
+            html += '<td>' + r.detector + '</td>';
+            html += '<td>' + r.dataset + '</td>';
+            html += '<td>' + r.score.toFixed(4) + '</td>';
+            html += '<td>' + r.threshold.toFixed(4) + '</td>';
+            html += '<td>' + res + '</td>';
+            html += '</tr>';
+        }
+        html += '</tbody></table></div>';
+    });
+    html += '</div>';
+    return html;
+}
+
+function toggleVideoDetail(cardId) {
+    const el = document.getElementById('vd-' + cardId);
+    el.classList.toggle('expanded');
+}
+
+function switchFnDataset(ds) {
+    document.querySelectorAll('.va-fn-dataset').forEach(el => el.style.display = 'none');
+    const target = document.getElementById('va-fn-' + css_id(ds));
+    if (target) target.style.display = '';
+}
+
+function showThumbModal(src) {
+    // Reuse existing thumb-modal if present, or create one
+    let modal = document.querySelector('.thumb-modal');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.className = 'thumb-modal';
+        modal.onclick = function() { this.classList.remove('active'); };
+        modal.innerHTML = '<img>';
+        document.body.appendChild(modal);
+    }
+    modal.querySelector('img').src = src;
+    modal.classList.add('active');
+}
+
+function calculateTestsetRanking() {
+    const selected = [];
+    document.querySelectorAll('#testset-grid input:checked').forEach(cb => selected.push(cb.value));
+
+    if (selected.length === 0) {
+        document.getElementById('testset-results').innerHTML =
+            '<div class="empty-state"><p>Выберите хотя бы один датасет.</p></div>';
+        return;
+    }
+
+    const filtered = allRuns.filter(r => selected.includes(r.dataset));
+    const groups = {};
+    for (const r of filtered) {
+        if (!r.detector) continue;
+        (groups[r.detector] = groups[r.detector] || []).push(r);
+    }
+
+    const items = buildRankingTable(groups, 'detector');
+    document.getElementById('testset-results').innerHTML = renderRankingHTML(items, 'detector');
+}
+</script>
+{% endblock %}

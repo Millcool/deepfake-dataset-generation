@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block title %}Зарегистрированные детекторы{% endblock %}
+
+{% block content %}
+<div class="page-header" style="display: flex; justify-content: space-between; align-items: center;">
+    <div>
+        <h1>Зарегистрированные детекторы</h1>
+        <p class="subtitle">Внешние детекторы, подключённые к системе оценки</p>
+    </div>
+    <a href="{{ url_for('register_detector_page') }}" class="btn btn-primary">+ Зарегистрировать</a>
+</div>
+
+{% if detectors %}
+<div class="detectors-grid">
+    {% for d in detectors %}
+    <div class="detector-card" id="card-{{ d.id }}">
+        <div class="detector-card-header">
+            <h3>{{ d.name }}</h3>
+            <span class="status-badge status-{{ d.status }}">{{ d.status }}</span>
+        </div>
+        <div class="detector-card-url">{{ d.api_url }}</div>
+        {% if d.description %}
+        <p class="detector-card-desc">{{ d.description }}</p>
+        {% endif %}
+        <div class="detector-card-meta">
+            {% if d.author %}<span>{{ d.author }}</span>{% endif %}
+            {% if d.paper_url %}<a href="{{ d.paper_url }}" target="_blank">Paper</a>{% endif %}
+            {% if d.github_url %}<a href="{{ d.github_url }}" target="_blank">GitHub</a>{% endif %}
+        </div>
+        {% if d.last_test %}
+        <div class="detector-card-date">Последний тест: {{ d.last_test[:19] }}</div>
+        {% endif %}
+        <div class="detector-card-actions">
+            <button class="btn btn-sm" onclick="testDetector('{{ d.id }}')">Test</button>
+            <button class="btn btn-sm btn-danger" onclick="deleteDetector('{{ d.id }}', '{{ d.name }}')">Delete</button>
+        </div>
+        <!-- Inline test results -->
+        <div class="detector-test-results" id="results-{{ d.id }}" style="display:none;"></div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="empty-state">
+    <p>Нет зарегистрированных детекторов</p>
+    <p class="hint">Перейдите на <a href="{{ url_for('register_detector_page') }}">страницу регистрации</a> чтобы добавить первый</p>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+function testDetector(id) {
+    const resultsDiv = document.getElementById('results-' + id);
+    resultsDiv.style.display = 'block';
+    resultsDiv.innerHTML = '<p style="color:#7f8c8d;font-size:0.85rem;">Тестирование...</p>';
+
+    fetch('/api/detectors/' + id + '/test', { method: 'POST' })
+    .then(r => r.json())
+    .then(result => {
+        let html = '';
+        result.checks.forEach(function(check) {
+            const cls = check.passed ? 'check-pass' : 'check-fail';
+            const icon = check.passed ? '&#10004;' : '&#10008;';
+            html += '<div class="check-item ' + cls + '">'
+                + '<span class="check-icon">' + icon + '</span>'
+                + '<strong>' + check.name + '</strong> '
+                + '<span class="check-detail">' + check.detail + '</span>'
+                + '</div>';
+        });
+
+        if (result.all_passed) {
+            html += '<div class="status-badge status-verified" style="margin-top:0.5rem;">Все проверки пройдены</div>';
+        } else {
+            html += '<div class="status-badge status-error" style="margin-top:0.5rem;">Есть ошибки</div>';
+        }
+        resultsDiv.innerHTML = html;
+
+        // Update status badge in card header
+        const card = document.getElementById('card-' + id);
+        const badge = card.querySelector('.status-badge');
+        if (badge) {
+            badge.className = 'status-badge ' + (result.all_passed ? 'status-verified' : 'status-error');
+            badge.textContent = result.all_passed ? 'verified' : 'error';
+        }
+    })
+    .catch(err => {
+        resultsDiv.innerHTML = '<p style="color:#e74c3c;font-size:0.85rem;">Ошибка: ' + err + '</p>';
+    });
+}
+
+function deleteDetector(id, name) {
+    if (!confirm('Удалить детектор "' + name + '"?')) return;
+    fetch('/api/detectors/' + id, { method: 'DELETE' })
+    .then(r => r.json())
+    .then(result => {
+        if (result.ok) {
+            document.getElementById('card-' + id).remove();
+            // Check if grid is now empty
+            const grid = document.querySelector('.detectors-grid');
+            if (grid && grid.children.length === 0) {
+                location.reload();
+            }
+        }
+    })
+    .catch(err => alert('Ошибка: ' + err));
+}
+</script>
+{% endblock %}

@@ -1,0 +1,189 @@
+{% extends "base.html" %}
+{% block title %}Регистрация детектора{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Регистрация внешнего детектора</h1>
+    <p class="subtitle">Подключите свой детектор дипфейков к нашей системе оценки</p>
+</div>
+
+<!-- API Contract Documentation -->
+<div class="api-contract-card">
+    <h3>API-контракт</h3>
+    <p>Ваш детектор должен принимать видеофайл и возвращать оценку подлинности.</p>
+
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-top: 1rem;">
+        <div>
+            <h4 style="margin-bottom: 0.5rem; font-size: 0.9rem;">Запрос (что мы отправляем)</h4>
+            <div class="code-block">POST &lt;your_api_url&gt;
+Content-Type: multipart/form-data
+
+file: &lt;video.mp4&gt; (binary)</div>
+        </div>
+        <div>
+            <h4 style="margin-bottom: 0.5rem; font-size: 0.9rem;">Ответ (что должен вернуть детектор)</h4>
+            <div class="code-block">{
+  "score": 0.85,       // float [0,1], REQUIRED
+  "label": "fake",     // string, optional
+  "confidence": 0.85,  // float [0,1], optional
+  "metadata": {}       // object, optional
+}</div>
+        </div>
+    </div>
+
+    <p class="contract-note">
+        Поле <code>score</code> — единственное обязательное. Значение 0 = real, 1 = fake.
+        Этого достаточно для AUC, ROC, confusion matrix, score distributions, EER.
+    </p>
+    <p class="contract-note" style="margin-top: 0.5rem;">
+        Mock-детектор для тестирования: <code>http://localhost:5050/api/mock-detector</code>
+    </p>
+</div>
+
+<!-- Registration Form -->
+<div class="form-card">
+    <h3>Данные детектора</h3>
+    <form id="register-form">
+        <div class="form-row">
+            <div class="form-group">
+                <label for="name">Название детектора <span class="required">*</span></label>
+                <input type="text" id="name" name="name" required placeholder="например, MyDeepfakeDetector v2">
+            </div>
+            <div class="form-group">
+                <label for="api_url">API Endpoint URL <span class="required">*</span></label>
+                <input type="url" id="api_url" name="api_url" required placeholder="http://localhost:8000/detect">
+                <span class="form-hint">URL, принимающий POST с файлом видео</span>
+            </div>
+        </div>
+        <div class="form-group">
+            <label for="description">Описание</label>
+            <textarea id="description" name="description" rows="3" placeholder="Краткое описание архитектуры и подхода..."></textarea>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label for="author">Автор / Организация</label>
+                <input type="text" id="author" name="author" placeholder="имя или название лаборатории">
+            </div>
+            <div class="form-group">
+                <label for="paper_url">Paper URL</label>
+                <input type="url" id="paper_url" name="paper_url" placeholder="https://arxiv.org/abs/...">
+            </div>
+        </div>
+        <div class="form-group">
+            <label for="github_url">GitHub URL</label>
+            <input type="url" id="github_url" name="github_url" placeholder="https://github.com/...">
+        </div>
+        <button type="submit" class="btn btn-primary" id="save-btn">Сохранить</button>
+    </form>
+</div>
+
+<!-- Smoke Test Panel (hidden until saved) -->
+<div id="test-panel" class="form-card" style="display: none;">
+    <h3>Smoke-тест</h3>
+    <p class="subtitle" style="margin-bottom: 1rem;">Проверяем, что детектор отвечает в правильном формате</p>
+    <button class="btn btn-primary" id="test-btn" onclick="runTest()">Протестировать</button>
+
+    <div id="test-results" style="display: none; margin-top: 1rem;">
+        <div id="checks-list"></div>
+        <div id="test-summary" style="margin-top: 1rem;"></div>
+        <details style="margin-top: 1rem;">
+            <summary style="cursor: pointer; font-size: 0.85rem; color: #7f8c8d;">Raw response JSON</summary>
+            <pre id="raw-response" class="code-block" style="margin-top: 0.5rem; max-height: 200px; overflow: auto;"></pre>
+        </details>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+let savedDetectorId = null;
+
+document.getElementById('register-form').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const btn = document.getElementById('save-btn');
+    btn.disabled = true;
+    btn.textContent = 'Сохранение...';
+
+    const data = {
+        name: document.getElementById('name').value,
+        api_url: document.getElementById('api_url').value,
+        description: document.getElementById('description').value,
+        author: document.getElementById('author').value,
+        paper_url: document.getElementById('paper_url').value,
+        github_url: document.getElementById('github_url').value,
+    };
+
+    fetch('/api/detectors', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(data),
+    })
+    .then(r => r.json())
+    .then(result => {
+        if (result.error) {
+            alert('Ошибка: ' + result.error);
+            btn.disabled = false;
+            btn.textContent = 'Сохранить';
+            return;
+        }
+        savedDetectorId = result.id;
+        btn.textContent = 'Сохранено';
+        // Показать панель тестирования
+        document.getElementById('test-panel').style.display = 'block';
+        // Заблокировать форму
+        document.querySelectorAll('#register-form input, #register-form textarea').forEach(el => el.disabled = true);
+    })
+    .catch(err => {
+        alert('Ошибка сети: ' + err);
+        btn.disabled = false;
+        btn.textContent = 'Сохранить';
+    });
+});
+
+function runTest() {
+    if (!savedDetectorId) return;
+    const btn = document.getElementById('test-btn');
+    btn.disabled = true;
+    btn.textContent = 'Тестирование...';
+    document.getElementById('test-results').style.display = 'none';
+
+    fetch('/api/detectors/' + savedDetectorId + '/test', { method: 'POST' })
+    .then(r => r.json())
+    .then(result => {
+        btn.disabled = false;
+        btn.textContent = 'Протестировать';
+        document.getElementById('test-results').style.display = 'block';
+
+        // Render checks
+        const list = document.getElementById('checks-list');
+        list.innerHTML = '';
+        result.checks.forEach(function(check) {
+            const div = document.createElement('div');
+            div.className = 'check-item ' + (check.passed ? 'check-pass' : 'check-fail');
+            div.innerHTML = '<span class="check-icon">' + (check.passed ? '&#10004;' : '&#10008;') + '</span>'
+                + '<strong>' + check.name + '</strong>'
+                + '<span class="check-detail">' + check.detail + '</span>';
+            list.appendChild(div);
+        });
+
+        // Summary
+        const summary = document.getElementById('test-summary');
+        if (result.all_passed) {
+            summary.innerHTML = '<div class="status-badge status-verified">Все проверки пройдены</div>'
+                + '<p style="margin-top:0.5rem; font-size:0.85rem; color:#7f8c8d;">Видео: ' + (result.video_used || '—') + ' (' + (result.video_label || '—') + ')</p>';
+        } else {
+            summary.innerHTML = '<div class="status-badge status-error">Есть ошибки</div>';
+        }
+
+        // Raw response
+        document.getElementById('raw-response').textContent = JSON.stringify(result.response_data, null, 2) || 'null';
+    })
+    .catch(err => {
+        btn.disabled = false;
+        btn.textContent = 'Протестировать';
+        alert('Ошибка: ' + err);
+    });
+}
+</script>
+{% endblock %}

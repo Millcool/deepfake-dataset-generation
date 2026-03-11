@@ -1,0 +1,428 @@
+{% extends "base.html" %}
+{% block title %}{{ metrics.detector }} on {{ metrics.dataset }} - Dashboard{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>{{ metrics.detector }} on {{ metrics.dataset }}</h1>
+    <p class="subtitle">Run: {{ run_id }}</p>
+</div>
+
+<!-- Metric Cards -->
+<div class="metric-cards">
+    {% set m = metrics.metrics %}
+    <div class="metric-card">
+        <div class="metric-value {{ 'auc-high' if m.auc >= 0.9 else ('auc-mid' if m.auc >= 0.7 else 'auc-low') }}">
+            {{ "%.4f"|format(m.auc) }}
+        </div>
+        <div class="metric-label">AUC</div>
+    </div>
+    <div class="metric-card">
+        <div class="metric-value">{{ "%.4f"|format(m.accuracy) }}</div>
+        <div class="metric-label">Accuracy</div>
+    </div>
+    <div class="metric-card">
+        <div class="metric-value">{{ "%.4f"|format(m.eer) }}</div>
+        <div class="metric-label">EER</div>
+    </div>
+    <div class="metric-card">
+        <div class="metric-value">{{ "%.4f"|format(m.ap) }}</div>
+        <div class="metric-label">Average Precision</div>
+    </div>
+    <div class="metric-card">
+        <div class="metric-value">{{ metrics.total_videos }}</div>
+        <div class="metric-label">Total Videos</div>
+    </div>
+    <div class="metric-card">
+        <div class="metric-value">{{ "%.4f"|format(metrics.threshold) }}</div>
+        <div class="metric-label">Threshold (EER)</div>
+    </div>
+</div>
+
+<!-- Interactive Charts Row -->
+<div class="charts-row">
+    <div class="chart-container">
+        <h3>Score Distribution</h3>
+        <div id="histogram-chart"></div>
+    </div>
+    <div class="chart-container">
+        <h3>ROC Curve</h3>
+        <div id="roc-chart"></div>
+    </div>
+</div>
+
+<!-- Confusion Matrix + Score Stats -->
+<div class="charts-row">
+    <div class="chart-container">
+        <h3>Confusion Matrix</h3>
+        <div id="cm-chart"></div>
+        {% if scores_array %}
+        <div class="threshold-controls">
+            <button class="threshold-preset active" onclick="setThreshold(metricsData.threshold, this)">EER ({{ "%.4f"|format(metrics.threshold) }})</button>
+            <button class="threshold-preset" onclick="setThreshold(0.5, this)">0.5</button>
+            <input type="range" class="threshold-slider" id="threshold-slider" min="0" max="1" step="0.01" value="{{ "%.2f"|format(metrics.threshold) }}">
+            <span class="threshold-value" id="threshold-value">{{ "%.2f"|format(metrics.threshold) }}</span>
+        </div>
+        <div class="cm-metrics" id="cm-metrics"></div>
+        {% endif %}
+    </div>
+    <div class="chart-container">
+        <h3>Score Statistics</h3>
+        <table class="stats-table">
+            <thead>
+                <tr>
+                    <th></th>
+                    <th>Mean</th>
+                    <th>Std</th>
+                    <th>Min</th>
+                    <th>Median</th>
+                    <th>Max</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for label in ['fake', 'real'] %}
+                {% set s = metrics.score_stats[label] %}
+                <tr>
+                    <td class="{{ 'fake-label' if label == 'fake' else 'real-label' }}">{{ label|capitalize }}</td>
+                    <td>{{ "%.4f"|format(s.mean) }}</td>
+                    <td>{{ "%.4f"|format(s.std) }}</td>
+                    <td>{{ "%.4f"|format(s['min']) }}</td>
+                    <td>{{ "%.4f"|format(s.median) }}</td>
+                    <td>{{ "%.4f"|format(s['max']) }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <!-- Demographic Accuracy -->
+        {% if metrics.demographic_metrics %}
+        <h3 style="margin-top: 1.5rem;">Accuracy by Demographics</h3>
+        <div id="demo-chart"></div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Detection Examples -->
+<div class="section">
+    <h3>Примеры детекции</h3>
+    {% if examples and examples.examples %}
+    {% set cats = [
+        ('tp', 'Верно обнаруженные фейки'),
+        ('fn', 'Пропущенные фейки'),
+        ('fp', 'Ложные тревоги'),
+        ('tn', 'Верно распознанные оригиналы')
+    ] %}
+    {% for cat_key, cat_title in cats %}
+    {% set cat_items = examples.examples | selectattr('category', 'equalto', cat_key) | list %}
+    {% if cat_items %}
+    <div class="examples-category">
+        <h4 class="examples-category-title">{{ cat_title }}</h4>
+        <div class="examples-row">
+            {% for ex in cat_items %}
+            <div class="example-card">
+                <div class="example-thumb" onclick="openModal('{{ url_for('api_run_thumbnail', run_id=run_id, filename=ex.filename) }}')">
+                    {% if ex.has_thumbnail %}
+                    <img src="{{ url_for('api_run_thumbnail', run_id=run_id, filename=ex.filename) }}" alt="{{ ex.filename }}" loading="lazy">
+                    {% else %}
+                    <div class="thumb-placeholder">N/A</div>
+                    {% endif %}
+                </div>
+                <div class="example-info">
+                    <span class="example-label {{ 'fake-label' if ex.label == 'fake' else 'real-label' }}">
+                        {{ 'Фейк' if ex.label == 'fake' else 'Оригинал' }}
+                    </span>
+                    <div class="example-prediction">
+                        Детектор: {{ 'Фейк' if ex.predicted == 'fake' else 'Оригинал' }}
+                        <span class="example-score">({{ "%.2f"|format(ex.score) }})</span>
+                    </div>
+                    {% if ex.gender %}
+                    <div class="example-gender">{{ 'муж.' if ex.gender == 'male' else 'жен.' }}</div>
+                    {% endif %}
+                    <div class="example-filename" title="{{ ex.video_path }}">{{ ex.filename | replace('.jpg', '.mp4') }}</div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+    {% endfor %}
+    {% else %}
+    <div class="empty-state" style="padding: 1.5rem;">
+        Превью недоступны для этого прогона
+    </div>
+    {% endif %}
+</div>
+
+<!-- Thumbnail Modal -->
+<div id="thumb-modal" class="thumb-modal" onclick="closeModal()">
+    <img id="thumb-modal-img" src="" alt="Enlarged thumbnail">
+</div>
+
+<!-- Generated Figures Gallery -->
+{% if figures %}
+<div class="section">
+    <h3>Generated Figures</h3>
+    <div class="figures-gallery">
+        {% for fig in figures %}
+        <div class="figure-card">
+            <img src="{{ url_for('api_run_figure', run_id=run_id, name=fig) }}" alt="{{ fig }}" loading="lazy">
+            <div class="figure-name">{{ fig }}</div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ── Thumbnail Modal ──
+function openModal(src) {
+    const modal = document.getElementById('thumb-modal');
+    const img = document.getElementById('thumb-modal-img');
+    img.src = src;
+    modal.classList.add('active');
+}
+function closeModal() {
+    document.getElementById('thumb-modal').classList.remove('active');
+}
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') closeModal();
+});
+
+const runId = "{{ run_id }}";
+const metricsData = {{ metrics | tojson }};
+
+// ── Histogram ──
+(function() {
+    const buckets = metricsData.histogram.buckets;
+    if (!buckets || buckets.length === 0) {
+        document.getElementById('histogram-chart').innerHTML =
+            '<div class="empty-state" style="padding:2rem;color:#95a5a6;">Histogram will appear after sync (scores.csv needed)</div>';
+        return;
+    }
+    const labels = buckets.map(b => b.range);
+    const threshold = metricsData.threshold;
+
+    const traceReal = {
+        x: labels,
+        y: buckets.map(b => b.real_count),
+        name: 'Real (' + metricsData.real_count + ')',
+        type: 'bar',
+        marker: { color: '#2ecc71', opacity: 0.7 }
+    };
+
+    const traceFake = {
+        x: labels,
+        y: buckets.map(b => b.fake_count),
+        name: 'Fake (' + metricsData.fake_count + ')',
+        type: 'bar',
+        marker: { color: '#e74c3c', opacity: 0.7 }
+    };
+
+    const layout = {
+        barmode: 'overlay',
+        xaxis: { title: 'Score', tickangle: -45 },
+        yaxis: { title: 'Count' },
+        margin: { t: 10, b: 80 },
+        legend: { x: 0.5, y: 1, xanchor: 'center', orientation: 'h' },
+        shapes: [{
+            type: 'line',
+            x0: Math.floor(threshold / 0.05),
+            x1: Math.floor(threshold / 0.05),
+            y0: 0,
+            y1: 1,
+            yref: 'paper',
+            line: { color: '#f39c12', width: 2, dash: 'dash' }
+        }],
+        annotations: [{
+            x: Math.floor(threshold / 0.05),
+            y: 1,
+            yref: 'paper',
+            text: 'threshold=' + threshold.toFixed(3),
+            showarrow: false,
+            yanchor: 'bottom',
+            font: { color: '#f39c12', size: 11 }
+        }]
+    };
+
+    Plotly.newPlot('histogram-chart', [traceReal, traceFake], layout, {responsive: true});
+})();
+
+// ── ROC Curve ──
+(function() {
+    function plotRoc(data) {
+        const traceRoc = {
+            x: data.fpr,
+            y: data.tpr,
+            name: 'ROC (AUC=' + data.auc.toFixed(4) + ')',
+            type: 'scatter',
+            mode: 'lines',
+            line: { color: '#3498db', width: 2 }
+        };
+        const traceDiag = {
+            x: [0, 1],
+            y: [0, 1],
+            name: 'Random',
+            type: 'scatter',
+            mode: 'lines',
+            line: { color: '#95a5a6', width: 1, dash: 'dash' }
+        };
+        const layout = {
+            xaxis: { title: 'False Positive Rate', range: [0, 1] },
+            yaxis: { title: 'True Positive Rate', range: [0, 1] },
+            margin: { t: 10 },
+            legend: { x: 0.6, y: 0.1 }
+        };
+        Plotly.newPlot('roc-chart', [traceRoc, traceDiag], layout, {responsive: true});
+    }
+
+    // Try roc_data from metrics.json first, then fall back to /api/roc
+    if (metricsData.roc_data && metricsData.roc_data.fpr) {
+        plotRoc(metricsData.roc_data);
+    } else {
+        fetch('/api/run/' + runId + '/roc')
+            .then(r => {
+                if (!r.ok) throw new Error('not available');
+                return r.json();
+            })
+            .then(plotRoc)
+            .catch(() => {
+                document.getElementById('roc-chart').innerHTML =
+                    '<div class="empty-state" style="padding:2rem;color:#95a5a6;">ROC curve will appear after sync</div>';
+            });
+    }
+})();
+
+// ── Confusion Matrix ──
+(function() {
+    const cm = metricsData.confusion_matrix.overall;
+    const z = [[cm.TN, cm.FP], [cm.FN, cm.TP]];
+    const text = z.map(row => row.map(v => String(v)));
+
+    const trace = {
+        z: z,
+        x: ['Real', 'Fake'],
+        y: ['Real', 'Fake'],
+        type: 'heatmap',
+        colorscale: 'Blues',
+        showscale: true,
+        text: text,
+        texttemplate: '%{text}',
+        textfont: { size: 18 },
+        hoverinfo: 'z'
+    };
+
+    const layout = {
+        xaxis: { title: 'Predicted', side: 'bottom' },
+        yaxis: { title: 'Actual', autorange: 'reversed' },
+        margin: { t: 10 },
+        width: 400,
+        height: 350
+    };
+
+    Plotly.newPlot('cm-chart', [trace], layout, {responsive: true});
+})();
+
+// ── Threshold Slider ──
+{% if scores_array %}
+(function() {
+    const scoresArray = {{ scores_array | tojson }};
+    const slider = document.getElementById('threshold-slider');
+    const valueDisplay = document.getElementById('threshold-value');
+    const metricsDisplay = document.getElementById('cm-metrics');
+
+    function recomputeCM(threshold) {
+        let tp=0, fp=0, tn=0, fn=0;
+        for (const [score, isFake] of scoresArray) {
+            const predicted = score >= threshold ? 1 : 0;
+            if (isFake && predicted) tp++;
+            else if (isFake && !predicted) fn++;
+            else if (!isFake && predicted) fp++;
+            else tn++;
+        }
+        const total = tp + fp + tn + fn;
+        const acc = total > 0 ? (tp + tn) / total : 0;
+        const prec = (tp + fp) > 0 ? tp / (tp + fp) : 0;
+        const rec = (tp + fn) > 0 ? tp / (tp + fn) : 0;
+        const f1 = (prec + rec) > 0 ? 2 * prec * rec / (prec + rec) : 0;
+
+        // Update Plotly heatmap
+        const z = [[tn, fp], [fn, tp]];
+        const text = z.map(row => row.map(v => String(v)));
+        Plotly.restyle('cm-chart', {z: [z], text: [text]});
+
+        // Update metrics display
+        metricsDisplay.innerHTML =
+            '<span>Accuracy: <strong>' + acc.toFixed(4) + '</strong></span>' +
+            '<span>Precision: <strong>' + prec.toFixed(4) + '</strong></span>' +
+            '<span>Recall: <strong>' + rec.toFixed(4) + '</strong></span>' +
+            '<span>F1: <strong>' + f1.toFixed(4) + '</strong></span>';
+
+        // Update histogram threshold line
+        updateHistogramThreshold(threshold);
+    }
+
+    function updateHistogramThreshold(threshold) {
+        const histEl = document.getElementById('histogram-chart');
+        if (!histEl || !histEl.data || histEl.data.length === 0) return;
+        const bucketWidth = metricsData.histogram.bucket_width || 0.05;
+        const xPos = Math.floor(threshold / bucketWidth);
+        Plotly.relayout('histogram-chart', {
+            'shapes[0].x0': xPos,
+            'shapes[0].x1': xPos,
+            'annotations[0].x': xPos,
+            'annotations[0].text': 'threshold=' + threshold.toFixed(3)
+        });
+    }
+
+    slider.addEventListener('input', function() {
+        const val = parseFloat(this.value);
+        valueDisplay.textContent = val.toFixed(2);
+        recomputeCM(val);
+        // Deactivate preset buttons
+        document.querySelectorAll('.threshold-preset').forEach(b => b.classList.remove('active'));
+    });
+
+    window.setThreshold = function(val, btn) {
+        slider.value = val;
+        valueDisplay.textContent = val.toFixed(2);
+        recomputeCM(val);
+        document.querySelectorAll('.threshold-preset').forEach(b => b.classList.remove('active'));
+        if (btn) btn.classList.add('active');
+    };
+
+    // Initial computation
+    recomputeCM(metricsData.threshold);
+})();
+{% endif %}
+
+// ── Demographic Accuracy ──
+(function() {
+    const demoMetrics = metricsData.demographic_metrics;
+    if (!demoMetrics || Object.keys(demoMetrics).length === 0) return;
+
+    const genderData = demoMetrics.gender;
+    if (!genderData) return;
+
+    const groups = Object.keys(genderData).sort();
+    const trace = {
+        x: groups,
+        y: groups.map(g => genderData[g].accuracy),
+        text: groups.map(g => 'n=' + genderData[g].total),
+        type: 'bar',
+        marker: {
+            color: groups.map((_, i) => ['#3498db', '#e91e63', '#2ecc71', '#f39c12'][i % 4])
+        },
+        textposition: 'outside'
+    };
+
+    const layout = {
+        yaxis: { title: 'Accuracy', range: [0, 1.1] },
+        margin: { t: 10, b: 40 },
+        height: 250
+    };
+
+    Plotly.newPlot('demo-chart', [trace], layout, {responsive: true});
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,161 @@
+{% extends "base.html" %}
+{% block title %}Обзор - Дашборд детекции дипфейков{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Прогоны детекции</h1>
+    <p class="subtitle">{{ runs|length }} прогонов на {{ datasets|length }} датасетах</p>
+</div>
+
+<!-- Filters -->
+<div class="filters-bar">
+    <div class="filter-group">
+        <label for="filter-dataset">Датасет:</label>
+        <select id="filter-dataset" onchange="applyFilters()">
+            <option value="">All</option>
+            {% for ds in datasets %}
+            <option value="{{ ds }}">{{ ds }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="filter-group">
+        <label for="filter-detector">Детектор:</label>
+        <select id="filter-detector" onchange="applyFilters()">
+            <option value="">All</option>
+            {% for det in detectors %}
+            <option value="{{ det }}">{{ det }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="filter-group">
+        <label for="filter-auc-min">AUC min:</label>
+        <input type="range" id="filter-auc-min" min="0" max="1" step="0.01" value="0" oninput="applyFilters(); document.getElementById('auc-val').textContent=this.value">
+        <span id="auc-val">0</span>
+    </div>
+    <div class="filter-group">
+        <button class="btn btn-primary" onclick="compareSelected()">Сравнить выбранные</button>
+    </div>
+</div>
+
+<!-- Runs Table -->
+<div class="table-wrapper">
+    <table class="runs-table" id="runs-table">
+        <thead>
+            <tr>
+                <th><input type="checkbox" id="select-all" onchange="toggleSelectAll(this)"></th>
+                <th class="sortable" data-col="detector" onclick="sortTable('detector')">Детектор</th>
+                <th class="sortable" data-col="dataset" onclick="sortTable('dataset')">Датасет</th>
+                <th class="sortable" data-col="auc" onclick="sortTable('auc')">AUC</th>
+                <th class="sortable" data-col="accuracy" onclick="sortTable('accuracy')">Accuracy</th>
+                <th class="sortable" data-col="eer" onclick="sortTable('eer')">EER</th>
+                <th class="sortable" data-col="precision" onclick="sortTable('precision')">Precision</th>
+                <th class="sortable" data-col="recall" onclick="sortTable('recall')">Recall</th>
+                <th class="sortable" data-col="f1" onclick="sortTable('f1')">F1</th>
+                <th class="sortable" data-col="total_videos" onclick="sortTable('total_videos')">Видео</th>
+                <th class="sortable" data-col="date" onclick="sortTable('date')">Дата</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for run in runs %}
+            <tr class="run-row"
+                data-id="{{ run.id }}"
+                data-detector="{{ run.detector }}"
+                data-dataset="{{ run.dataset }}"
+                data-auc="{{ run.auc or 0 }}"
+                data-accuracy="{{ run.accuracy or 0 }}"
+                data-eer="{{ run.eer or 0 }}"
+                data-precision="{{ run.precision or 0 }}"
+                data-recall="{{ run.recall or 0 }}"
+                data-f1="{{ run.f1 or 0 }}"
+                data-total_videos="{{ run.total_videos or 0 }}"
+                data-date="{{ run.date }}">
+                <td><input type="checkbox" class="run-checkbox" value="{{ run.id }}"></td>
+                <td>{{ run.detector }}</td>
+                <td><a href="{{ url_for('run_detail', run_id=run.id) }}">{{ run.dataset }}</a></td>
+                <td class="{{ 'auc-high' if run.auc and run.auc >= 0.9 else ('auc-mid' if run.auc and run.auc >= 0.7 else 'auc-low') }}">
+                    {{ "%.4f"|format(run.auc) if run.auc is not none else "N/A" }}
+                </td>
+                <td>{{ "%.4f"|format(run.accuracy) if run.accuracy is not none else "N/A" }}</td>
+                <td>{{ "%.4f"|format(run.eer) if run.eer is not none else "N/A" }}</td>
+                <td>{{ "%.4f"|format(run.precision) if run.precision is not none else "N/A" }}</td>
+                <td>{{ "%.4f"|format(run.recall) if run.recall is not none else "N/A" }}</td>
+                <td>{{ "%.4f"|format(run.f1) if run.f1 is not none else "N/A" }}</td>
+                <td>{{ run.total_videos }}</td>
+                <td class="date-cell">{{ run.date }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{% if runs|length == 0 %}
+<div class="empty-state">
+    <p>Нет завершённых прогонов.</p>
+    <p class="hint">Прогоны появятся здесь после завершения инференса на датасетах.</p>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+function applyFilters() {
+    const dataset = document.getElementById('filter-dataset').value;
+    const detector = document.getElementById('filter-detector').value;
+    const aucMin = parseFloat(document.getElementById('filter-auc-min').value);
+
+    document.querySelectorAll('.run-row').forEach(row => {
+        const rowDataset = row.dataset.dataset;
+        const rowDetector = row.dataset.detector;
+        const rowAuc = parseFloat(row.dataset.auc);
+
+        let show = true;
+        if (dataset && rowDataset !== dataset) show = false;
+        if (detector && rowDetector !== detector) show = false;
+        if (rowAuc < aucMin) show = false;
+
+        row.style.display = show ? '' : 'none';
+    });
+}
+
+function toggleSelectAll(checkbox) {
+    document.querySelectorAll('.run-checkbox').forEach(cb => {
+        const row = cb.closest('.run-row');
+        if (row.style.display !== 'none') {
+            cb.checked = checkbox.checked;
+        }
+    });
+}
+
+function compareSelected() {
+    const selected = [];
+    document.querySelectorAll('.run-checkbox:checked').forEach(cb => {
+        selected.push(cb.value);
+    });
+    if (selected.length < 2) {
+        alert('Выберите минимум 2 прогона для сравнения');
+        return;
+    }
+    window.location.href = '/compare?runs=' + selected.join(',');
+}
+
+let sortDir = {};
+function sortTable(col) {
+    const tbody = document.querySelector('#runs-table tbody');
+    const rows = Array.from(tbody.querySelectorAll('.run-row'));
+
+    sortDir[col] = sortDir[col] === 'asc' ? 'desc' : 'asc';
+    const dir = sortDir[col] === 'asc' ? 1 : -1;
+
+    rows.sort((a, b) => {
+        let va = a.dataset[col] || '';
+        let vb = b.dataset[col] || '';
+        const na = parseFloat(va);
+        const nb = parseFloat(vb);
+        if (!isNaN(na) && !isNaN(nb)) return (na - nb) * dir;
+        return va.localeCompare(vb) * dir;
+    });
+
+    rows.forEach(row => tbody.appendChild(row));
+}
+</script>
+{% endblock %}

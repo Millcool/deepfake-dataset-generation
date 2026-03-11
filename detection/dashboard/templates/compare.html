@@ -1,0 +1,211 @@
+{% extends "base.html" %}
+{% block title %}Compare Runs - Dashboard{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Compare Runs</h1>
+    <p class="subtitle">
+        {% if mode == 'same_dataset' %}
+        Same dataset: {{ runs_data[0].dataset if runs_data else '' }}
+        {% elif mode == 'same_detector' %}
+        Same detector: {{ runs_data[0].detector if runs_data else '' }}
+        {% else %}
+        {{ runs_data|length }} runs
+        {% endif %}
+    </p>
+</div>
+
+{% if runs_data|length < 2 %}
+<div class="empty-state">
+    <p>Select at least 2 runs from the <a href="{{ url_for('index') }}">overview page</a> to compare.</p>
+</div>
+{% else %}
+
+<!-- Comparison Table -->
+<div class="section">
+    <h3>Metrics Comparison</h3>
+    <div class="table-wrapper">
+        <table class="compare-table">
+            <thead>
+                <tr>
+                    <th>Metric</th>
+                    {% for run in runs_data %}
+                    <th>
+                        <a href="{{ url_for('run_detail', run_id=run._run_id) }}">
+                            {{ run.detector }}<br><small>{{ run.dataset }}</small>
+                        </a>
+                    </th>
+                    {% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                {% set metric_names = [('AUC', 'auc', true), ('Accuracy', 'accuracy', true), ('EER', 'eer', false), ('AP', 'ap', true)] %}
+                {% for label, key, higher_is_better in metric_names %}
+                <tr>
+                    <td><strong>{{ label }}</strong></td>
+                    {% set values = [] %}
+                    {% for run in runs_data %}
+                        {% set v = run.metrics.get(key) %}
+                        {% if v is not none %}
+                            {% set _ = values.append(v) %}
+                        {% endif %}
+                    {% endfor %}
+                    {% set best = values|max if higher_is_better else values|min %}
+                    {% for run in runs_data %}
+                    {% set v = run.metrics.get(key) %}
+                    <td class="{{ 'best-value' if v == best and values|length > 1 else '' }}">
+                        {{ "%.4f"|format(v) if v is not none else "N/A" }}
+                    </td>
+                    {% endfor %}
+                </tr>
+                {% endfor %}
+                <tr>
+                    <td><strong>Precision</strong></td>
+                    {% for run in runs_data %}
+                    {% set v = run.confusion_matrix.overall.precision %}
+                    <td>{{ "%.4f"|format(v) if v is not none else "N/A" }}</td>
+                    {% endfor %}
+                </tr>
+                <tr>
+                    <td><strong>Recall</strong></td>
+                    {% for run in runs_data %}
+                    {% set v = run.confusion_matrix.overall.recall %}
+                    <td>{{ "%.4f"|format(v) if v is not none else "N/A" }}</td>
+                    {% endfor %}
+                </tr>
+                <tr>
+                    <td><strong>F1</strong></td>
+                    {% for run in runs_data %}
+                    {% set v = run.confusion_matrix.overall.f1 %}
+                    <td>{{ "%.4f"|format(v) if v is not none else "N/A" }}</td>
+                    {% endfor %}
+                </tr>
+                <tr>
+                    <td><strong>Videos</strong></td>
+                    {% for run in runs_data %}
+                    <td>{{ run.total_videos }}</td>
+                    {% endfor %}
+                </tr>
+                <tr>
+                    <td><strong>Threshold</strong></td>
+                    {% for run in runs_data %}
+                    <td>{{ "%.4f"|format(run.threshold) }}</td>
+                    {% endfor %}
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Charts -->
+<div class="charts-row">
+    <div class="chart-container">
+        <h3>Metrics Bar Chart</h3>
+        <div id="metrics-bar-chart"></div>
+    </div>
+    <div class="chart-container">
+        <h3>ROC Curves</h3>
+        <div id="roc-compare-chart"></div>
+    </div>
+</div>
+
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if runs_data|length >= 2 %}
+<script>
+const runsData = {{ runs_data | tojson }};
+const runIds = {{ run_ids | tojson }};
+const colors = ['#3498db', '#e74c3c', '#2ecc71', '#f39c12', '#9b59b6', '#1abc9c',
+                '#e67e22', '#34495e', '#e91e63', '#00bcd4', '#8bc34a', '#ff5722',
+                '#607d8b', '#795548', '#9c27b0'];
+
+// ── Metrics Bar Chart ──
+(function() {
+    const metricKeys = ['auc', 'accuracy', 'ap', 'f1'];
+    const metricLabels = ['AUC', 'Accuracy', 'AP', 'F1'];
+
+    const traces = runsData.map((run, i) => {
+        const label = run.dataset || run.detector;
+        return {
+            name: label,
+            x: metricLabels,
+            y: metricKeys.map(k => {
+                if (k === 'f1') return run.confusion_matrix.overall.f1 || 0;
+                return run.metrics[k] || 0;
+            }),
+            type: 'bar',
+            marker: { color: colors[i % colors.length] }
+        };
+    });
+
+    const layout = {
+        barmode: 'group',
+        yaxis: { title: 'Score', range: [0, 1.05] },
+        margin: { t: 10 },
+        legend: { orientation: 'h', y: -0.2 }
+    };
+
+    Plotly.newPlot('metrics-bar-chart', traces, layout, {responsive: true});
+})();
+
+// ── ROC Curves ──
+(function() {
+    const traces = [{
+        x: [0, 1], y: [0, 1],
+        name: 'Random',
+        type: 'scatter', mode: 'lines',
+        line: { color: '#bdc3c7', dash: 'dash', width: 1 }
+    }];
+
+    function addRocTrace(data, run, i) {
+        const label = (run.dataset || run.detector) + ' (AUC=' + data.auc.toFixed(4) + ')';
+        traces.push({
+            x: data.fpr,
+            y: data.tpr,
+            name: label,
+            type: 'scatter',
+            mode: 'lines',
+            line: { color: colors[i % colors.length], width: 2 }
+        });
+    }
+
+    let loaded = 0;
+    function checkDone() {
+        loaded++;
+        if (loaded === runIds.length) {
+            if (traces.length > 1) {
+                const layout = {
+                    xaxis: { title: 'FPR', range: [0, 1] },
+                    yaxis: { title: 'TPR', range: [0, 1] },
+                    margin: { t: 10 },
+                    legend: { x: 0.5, y: 0.05, xanchor: 'center', orientation: 'h' }
+                };
+                Plotly.newPlot('roc-compare-chart', traces, layout, {responsive: true});
+            } else {
+                document.getElementById('roc-compare-chart').innerHTML =
+                    '<div class="empty-state" style="padding:2rem;color:#95a5a6;">ROC curves will appear after sync</div>';
+            }
+        }
+    }
+
+    runsData.forEach((run, i) => {
+        // Try roc_data from metrics first
+        if (run.roc_data && run.roc_data.fpr) {
+            addRocTrace(run.roc_data, run, i);
+            checkDone();
+        } else {
+            fetch('/api/run/' + runIds[i] + '/roc')
+                .then(r => {
+                    if (!r.ok) throw new Error('not available');
+                    return r.json();
+                })
+                .then(data => { addRocTrace(data, run, i); checkDone(); })
+                .catch(() => { checkDone(); });
+        }
+    });
+})();
+</script>
+{% endif %}
+{% endblock %}

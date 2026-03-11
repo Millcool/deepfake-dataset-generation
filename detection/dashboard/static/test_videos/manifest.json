@@ -1,0 +1,12 @@
+{
+  "real_001.mp4": "real",
+  "real_002.mp4": "real",
+  "real_003.mp4": "real",
+  "real_004.mp4": "real",
+  "real_005.mp4": "real",
+  "fake_001.mp4": "fake",
+  "fake_002.mp4": "fake",
+  "fake_003.mp4": "fake",
+  "fake_004.mp4": "fake",
+  "fake_005.mp4": "fake"
+}

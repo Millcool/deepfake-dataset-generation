@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Дашборд детекции дипфейков{% endblock %}</title>
+    <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-brand">
+            <a href="{{ url_for('index') }}">Дашборд детекции дипфейков</a>
+        </div>
+        <div class="nav-links">
+            <a href="{{ url_for('index') }}">Обзор</a>
+            <a href="{{ url_for('rankings') }}">Рейтинги</a>
+            <a href="{{ url_for('detectors_list') }}">Детекторы</a>
+            <span id="sync-status" class="sync-indicator"></span>
+            <button class="btn btn-sm" id="sync-btn" onclick="syncFromServer()">Синхронизация</button>
+        </div>
+    </nav>
+
+    <main class="container">
+        {% block content %}{% endblock %}
+    </main>
+
+    <script>
+        function syncFromServer() {
+            const btn = document.getElementById('sync-btn');
+            const status = document.getElementById('sync-status');
+            btn.disabled = true;
+            btn.textContent = 'Синхронизация...';
+            status.textContent = '';
+            status.className = 'sync-indicator';
+
+            fetch('/api/sync')
+                .then(r => r.json())
+                .then(data => {
+                    if (data.error) {
+                        status.textContent = 'Ошибка синхронизации';
+                        status.className = 'sync-indicator sync-error';
+                        alert('Ошибка: ' + data.error);
+                    } else {
+                        const msg = data.runs_synced > 0
+                            ? data.runs_synced + ' новых прогонов'
+                            : 'Всё актуально';
+                        status.textContent = msg;
+                        status.className = 'sync-indicator sync-ok';
+                        if (data.runs_synced > 0) {
+                            location.reload();
+                        }
+                    }
+                    btn.disabled = false;
+                    btn.textContent = 'Синхронизация';
+                })
+                .catch(err => {
+                    status.textContent = 'Нет соединения';
+                    status.className = 'sync-indicator sync-error';
+                    btn.disabled = false;
+                    btn.textContent = 'Синхронизация';
+                });
+        }
+    </script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>
