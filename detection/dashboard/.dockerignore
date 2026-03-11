@@ -1,0 +1,9 @@
+.venv
+__pycache__
+*.pyc
+.git
+static/test_videos/*.mp4
+nginx
+docker-compose.yml
+deploy.sh
+.env

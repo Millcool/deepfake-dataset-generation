@@ -29,7 +29,7 @@ app = Flask(__name__)
 
 # Локальный кэш runs — рядом с проектом
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-LOCAL_RUNS_DIR = os.path.join(PROJECT_ROOT, "detection_eval", "runs")
+LOCAL_RUNS_DIR = os.environ.get("RUNS_DIR", os.path.join(PROJECT_ROOT, "detection_eval", "runs"))
 
 # Токен — из kod.txt или env
 TOKEN = os.environ.get("MIEM_TOKEN", "")
@@ -129,6 +129,36 @@ def rankings():
                            all_runs_json=json.dumps(all_runs),
                            detector_catalog_json=json.dumps(catalog.DETECTORS),
                            algorithm_catalog_json=json.dumps(catalog.ALGORITHMS))
+
+
+@app.route("/detector/<detector_key>")
+def detector_detail(detector_key):
+    """Страница детектора: описание + все прогоны."""
+    info = catalog.DETECTORS.get(detector_key)
+    runs = data_loader.scan_runs()
+    det_runs = sorted([r for r in runs if r["detector"] == detector_key],
+                      key=lambda r: -(r["auc"] or 0))
+    if not info and not det_runs:
+        abort(404)
+    return render_template("detector_detail.html",
+                           key=detector_key, info=info, runs=det_runs,
+                           runs_json=json.dumps(det_runs),
+                           algorithm_catalog_json=json.dumps(catalog.ALGORITHMS))
+
+
+@app.route("/dataset/<dataset_key>")
+def dataset_detail(dataset_key):
+    """Страница датасета: описание + все прогоны."""
+    info = catalog.ALGORITHMS.get(dataset_key)
+    runs = data_loader.scan_runs()
+    ds_runs = sorted([r for r in runs if r["dataset"] == dataset_key],
+                     key=lambda r: -(r["auc"] or 0))
+    if not info and not ds_runs:
+        abort(404)
+    return render_template("dataset_detail.html",
+                           key=dataset_key, info=info, runs=ds_runs,
+                           runs_json=json.dumps(ds_runs),
+                           detector_catalog_json=json.dumps(catalog.DETECTORS))
 
 
 @app.route("/compare")
