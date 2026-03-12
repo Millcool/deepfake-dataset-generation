@@ -1285,6 +1285,7 @@ a:hover {
     align-items: center;
     justify-content: center;
     min-height: 100vh;
+    margin: 0;
     background: #f5f6fa;
 }
 .auth-container {
