@@ -96,7 +96,10 @@ with app.app_context():
     db_dir = os.path.dirname(DATABASE_PATH)
     if db_dir:
         os.makedirs(db_dir, exist_ok=True)
-    db.create_all()
+    try:
+        db.create_all()
+    except Exception:
+        pass  # Tables already exist (e.g. persistent volume)
     _create_default_admin()
 
 

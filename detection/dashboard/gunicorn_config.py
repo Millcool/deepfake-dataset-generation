@@ -2,6 +2,7 @@
 
 bind = "0.0.0.0:5050"
 workers = 2
+preload_app = True
 timeout = 120
 accesslog = "-"
 errorlog = "-"
