@@ -22,6 +22,12 @@ __pycache__/
 *.pyo
 *.egg-info/
 .eggs/
+.venv/
+
+# SQLite databases
+*.db
+*.db-wal
+*.db-shm
 
 # OS files
 .DS_Store

@@ -20,11 +20,15 @@
     <!-- Filter bar -->
     <div class="filter-bar">
         <span class="filter-label">Тип датасета:</span>
-        <button class="filter-chip active" onclick="setDetFilter('type', 'all', this)">Все</button>
-        <button class="filter-chip" onclick="setDetFilter('type', 'face-to-face', this)">face-to-face</button>
-        <button class="filter-chip" onclick="setDetFilter('type', 'audio-to-face', this)">audio-to-face</button>
+        <button class="filter-chip active" data-group="type" onclick="setDetFilter('type', 'all', this)">Все</button>
+        <button class="filter-chip" data-group="type" onclick="setDetFilter('type', 'face-to-face', this)">face-to-face</button>
+        <button class="filter-chip" data-group="type" onclick="setDetFilter('type', 'audio-to-face', this)">audio-to-face</button>
         <span class="filter-label" style="margin-left: 1rem;">Год датасета:</span>
         <span id="det-year-chips"></span>
+        <span class="filter-label" style="margin-left: 1rem;">Источник:</span>
+        <button class="filter-chip active" data-group="source" onclick="setDetFilter('source', 'all', this)">Все</button>
+        <button class="filter-chip" data-group="source" onclick="setDetFilter('source', 'builtin', this)">Встроенные</button>
+        <button class="filter-chip" data-group="source" onclick="setDetFilter('source', 'user', this)">Пользовательские</button>
     </div>
 
     <div id="det-table-container">
@@ -262,7 +266,11 @@ function renderRankingHTML(items, groupBy) {
 
         html += '<tr class="ranking-row">';
         html += '<td><span class="rank-badge rank-' + item.rank + '">' + item.rank + '</span></td>';
+        const isUser = item.name.startsWith('user:');
         html += '<td><a href="' + linkUrl + '" class="ranking-link"><strong>' + displayName + '</strong></a>';
+        if (isUser) {
+            html += ' <span class="status-badge status-pending" style="font-size:0.65rem;">user</span>';
+        }
         if (groupBy === 'dataset' && catInfo.type) {
             const typeClass = catInfo.type.includes('audio') ? 'audio' : 'face';
             html += ' <span class="algo-type algo-type-' + typeClass + '">' + catInfo.type + '</span>';
@@ -285,7 +293,7 @@ function renderRankingHTML(items, groupBy) {
 }
 
 // ── Feature 2: Filters for Detectors tab ──
-const detFilters = { type: 'all', years: [] };
+const detFilters = { type: 'all', years: [], source: 'all' };
 
 // Gather unique dataset years from catalog
 const datasetYears = [...new Set(Object.values(algoCatalog).map(a => a.year).filter(Boolean))].sort();
@@ -303,16 +311,12 @@ const detectorYears = [...new Set(Object.values(detCatalog).map(d => d.year).fil
 })();
 
 function setDetFilter(key, value, btn) {
-    if (key === 'type') {
-        detFilters.type = value;
-        // Update active state for type chips
-        btn.parentElement.querySelectorAll('.filter-chip').forEach(c => {
-            if (c.textContent === 'Все' || c.textContent === 'face-to-face' || c.textContent === 'audio-to-face') {
-                c.classList.remove('active');
-            }
-        });
-        btn.classList.add('active');
-    }
+    detFilters[key] = value;
+    // Deactivate only chips in the same group
+    btn.parentElement.querySelectorAll('.filter-chip[data-group="' + key + '"]').forEach(c => {
+        c.classList.remove('active');
+    });
+    btn.classList.add('active');
     applyDetFilters();
 }
 
@@ -338,6 +342,11 @@ function applyDetFilters() {
         if (detFilters.years.length > 0) {
             const info = algoCatalog[r.dataset];
             if (!info || !detFilters.years.includes(info.year)) return false;
+        }
+        if (detFilters.source === 'builtin') {
+            if (r.source === 'user') return false;
+        } else if (detFilters.source === 'user') {
+            if (r.source !== 'user') return false;
         }
         return true;
     });

@@ -5,7 +5,13 @@
 <div class="page-header" style="display: flex; justify-content: space-between; align-items: center;">
     <div>
         <h1>Зарегистрированные детекторы</h1>
-        <p class="subtitle">Внешние детекторы, подключённые к системе оценки</p>
+        <p class="subtitle">
+            {% if current_user.is_admin %}
+            Все детекторы в системе
+            {% else %}
+            Ваши детекторы, подключённые к системе оценки
+            {% endif %}
+        </p>
     </div>
     <a href="{{ url_for('register_detector_page') }}" class="btn btn-primary">+ Зарегистрировать</a>
 </div>
@@ -26,13 +32,19 @@
             {% if d.author %}<span>{{ d.author }}</span>{% endif %}
             {% if d.paper_url %}<a href="{{ d.paper_url }}" target="_blank">Paper</a>{% endif %}
             {% if d.github_url %}<a href="{{ d.github_url }}" target="_blank">GitHub</a>{% endif %}
+            {% if current_user.is_admin and d.user_id != current_user.id %}
+            <span style="color: #95a5a6; font-size: 0.8rem;">user #{{ d.user_id }}</span>
+            {% endif %}
         </div>
         {% if d.last_test %}
-        <div class="detector-card-date">Последний тест: {{ d.last_test[:19] }}</div>
+        <div class="detector-card-date">Последний тест: {{ d.last_test.strftime('%Y-%m-%d %H:%M') if d.last_test else '-' }}</div>
         {% endif %}
         <div class="detector-card-actions">
-            <button class="btn btn-sm" onclick="testDetector('{{ d.id }}')">Test</button>
-            <button class="btn btn-sm btn-danger" onclick="deleteDetector('{{ d.id }}', '{{ d.name }}')">Delete</button>
+            <button class="btn btn-sm" onclick="testDetector({{ d.id }})">Test</button>
+            <button class="btn btn-sm btn-primary" onclick="window.location='/dashboard'">Запустить прогон</button>
+            {% if d.user_id == current_user.id or current_user.is_admin %}
+            <button class="btn btn-sm btn-danger" onclick="deleteDetector({{ d.id }}, '{{ d.name }}')">Delete</button>
+            {% endif %}
         </div>
         <!-- Inline test results -->
         <div class="detector-test-results" id="results-{{ d.id }}" style="display:none;"></div>
@@ -55,7 +67,7 @@ function testDetector(id) {
     resultsDiv.style.display = 'block';
     resultsDiv.innerHTML = '<p style="color:#7f8c8d;font-size:0.85rem;">Тестирование...</p>';
 
-    fetch('/api/detectors/' + id + '/test', { method: 'POST' })
+    fetch('/api/user/detectors/' + id + '/test', { method: 'POST' })
     .then(r => r.json())
     .then(result => {
         let html = '';
@@ -91,7 +103,7 @@ function testDetector(id) {
 
 function deleteDetector(id, name) {
     if (!confirm('Удалить детектор "' + name + '"?')) return;
-    fetch('/api/detectors/' + id, { method: 'DELETE' })
+    fetch('/api/user/detectors/' + id, { method: 'DELETE' })
     .then(r => r.json())
     .then(result => {
         if (result.ok) {

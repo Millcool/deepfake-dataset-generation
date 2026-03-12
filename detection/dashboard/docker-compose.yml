@@ -5,8 +5,11 @@ services:
     environment:
       - MIEM_TOKEN=${MIEM_TOKEN}
       - RUNS_DIR=/app/data/runs
+      - DATABASE_PATH=/app/data/dashboard.db
+      - SECRET_KEY=${SECRET_KEY:-change-me-in-production}
     volumes:
       - runs_data:/app/data/runs
+      - db_data:/app/data
       - registry_data:/app/dashboard
     expose:
       - "5050"
@@ -25,4 +28,5 @@ services:
 
 volumes:
   runs_data:
+  db_data:
   registry_data:

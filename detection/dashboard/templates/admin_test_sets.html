@@ -1,0 +1,189 @@
+{% extends "base.html" %}
+{% block title %}Тестовые наборы (Admin){% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Управление тестовыми наборами</h1>
+    <p class="subtitle">Создание и управление наборами датасетов для оценки детекторов</p>
+</div>
+
+<!-- Create Form -->
+<div class="form-card">
+    <h3>Создать новый набор</h3>
+    <form id="create-form">
+        <div class="form-row">
+            <div class="form-group">
+                <label for="ts-name">Название <span class="required">*</span></label>
+                <input type="text" id="ts-name" required placeholder="например, Основной набор v1">
+            </div>
+            <div class="form-group">
+                <label for="ts-desc">Описание</label>
+                <input type="text" id="ts-desc" placeholder="Краткое описание набора...">
+            </div>
+        </div>
+
+        <label style="font-size: 0.85rem; font-weight: 600; color: #2c3e50; display: block; margin-bottom: 0.5rem;">Датасеты</label>
+
+        <div class="filter-bar" style="margin-bottom: 0.75rem;">
+            <span class="filter-label">Быстрые фильтры:</span>
+            <button type="button" class="filter-chip" onclick="quickFilter('all')">Все</button>
+            <button type="button" class="filter-chip" onclick="quickFilter('none')">Ни одного</button>
+            <button type="button" class="filter-chip" onclick="quickFilter('face-to-face')">face-to-face</button>
+            <button type="button" class="filter-chip" onclick="quickFilter('audio-to-face')">audio-to-face</button>
+            {% for year in years %}
+            <button type="button" class="filter-chip" onclick="quickFilter('{{ year }}')">{{ year }}</button>
+            {% endfor %}
+        </div>
+
+        <div class="testset-grid" id="ds-grid">
+            {% for key, info in algorithms.items() %}
+            <div class="testset-item">
+                <input type="checkbox" id="ds-{{ key }}" value="{{ key }}" data-type="{{ info.get('type', '') }}" data-year="{{ info.get('year', '') }}" onchange="updateSummary()">
+                <label for="ds-{{ key }}">{{ key }}</label>
+                <span class="testset-meta">
+                    {% if info.get('type') %}({{ info.type }}{% if info.get('year') %}, {{ info.year }}{% endif %}){% endif %}
+                </span>
+            </div>
+            {% endfor %}
+        </div>
+
+        <div class="testset-summary" id="create-summary">Выбрано: 0 датасетов</div>
+        <button type="submit" class="btn btn-primary">Создать набор</button>
+    </form>
+</div>
+
+<!-- Existing Test Sets -->
+<div class="section" style="margin-top: 1.5rem;">
+    <h2 style="font-size: 1.2rem; margin-bottom: 1rem;">Существующие наборы</h2>
+
+    {% if test_sets %}
+    <div class="table-wrapper">
+        <table class="runs-table">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Название</th>
+                    <th>Описание</th>
+                    <th>Датасеты</th>
+                    <th>Видео</th>
+                    <th>Статус</th>
+                    <th>Дата</th>
+                    <th>Действие</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for ts in test_sets %}
+                <tr>
+                    <td>{{ ts.id }}</td>
+                    <td><strong>{{ ts.name }}</strong></td>
+                    <td>{{ ts.description or '-' }}</td>
+                    <td>
+                        {% for dk in ts.get_dataset_keys() %}
+                        <span class="algo-type algo-type-face" style="font-size:0.7rem; margin: 1px;">{{ dk }}</span>
+                        {% endfor %}
+                    </td>
+                    <td>{{ ts.total_videos }}</td>
+                    <td>
+                        {% if ts.is_archived %}
+                        <span class="status-badge status-error">Архив</span>
+                        {% else %}
+                        <span class="status-badge status-verified">Активен</span>
+                        {% endif %}
+                    </td>
+                    <td class="date-cell">{{ ts.created_at.strftime('%Y-%m-%d') if ts.created_at else '-' }}</td>
+                    <td>
+                        {% if ts.is_archived %}
+                        <button class="btn btn-sm" onclick="toggleArchive({{ ts.id }}, false)">Разархивировать</button>
+                        {% else %}
+                        <button class="btn btn-sm btn-danger" onclick="toggleArchive({{ ts.id }}, true)">Архивировать</button>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <p>Нет тестовых наборов</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function quickFilter(mode) {
+    const checkboxes = document.querySelectorAll('#ds-grid input[type="checkbox"]');
+    if (mode === 'all') {
+        checkboxes.forEach(cb => cb.checked = true);
+    } else if (mode === 'none') {
+        checkboxes.forEach(cb => cb.checked = false);
+    } else if (mode === 'face-to-face' || mode === 'audio-to-face') {
+        checkboxes.forEach(cb => {
+            cb.checked = cb.dataset.type && cb.dataset.type.includes(mode);
+        });
+    } else {
+        // Year
+        checkboxes.forEach(cb => {
+            cb.checked = cb.dataset.year === mode;
+        });
+    }
+    updateSummary();
+}
+
+function updateSummary() {
+    const checked = document.querySelectorAll('#ds-grid input:checked').length;
+    document.getElementById('create-summary').textContent = 'Выбрано: ' + checked + ' датасетов';
+}
+
+document.getElementById('create-form').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const name = document.getElementById('ts-name').value.trim();
+    if (!name) return;
+
+    const selected = [];
+    document.querySelectorAll('#ds-grid input:checked').forEach(cb => selected.push(cb.value));
+    if (selected.length === 0) {
+        alert('Выберите хотя бы один датасет');
+        return;
+    }
+
+    fetch('/api/test-sets', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            name: name,
+            description: document.getElementById('ts-desc').value.trim(),
+            dataset_keys: selected,
+        }),
+    })
+    .then(r => r.json())
+    .then(result => {
+        if (result.error) {
+            alert(result.error);
+        } else {
+            location.reload();
+        }
+    })
+    .catch(err => alert('Ошибка: ' + err));
+});
+
+function toggleArchive(id, archive) {
+    fetch('/api/test-sets/' + id + '/archive', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ archive: archive }),
+    })
+    .then(r => r.json())
+    .then(result => {
+        if (result.error) {
+            alert(result.error);
+        } else {
+            location.reload();
+        }
+    })
+    .catch(err => alert('Ошибка: ' + err));
+}
+</script>
+{% endblock %}

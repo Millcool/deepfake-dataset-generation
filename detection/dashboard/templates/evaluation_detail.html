@@ -1,0 +1,224 @@
+{% extends "base.html" %}
+{% block title %}Прогон #{{ evaluation.id }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+        <div>
+            <h1>Прогон #{{ evaluation.id }}</h1>
+            <p class="subtitle">
+                {{ evaluation.detector.name if evaluation.detector else '?' }}
+                &rarr; {{ evaluation.test_set.name if evaluation.test_set else '?' }}
+            </p>
+        </div>
+        <a href="{{ url_for('user_dashboard') }}" class="btn">Назад</a>
+    </div>
+</div>
+
+<!-- Status & Progress -->
+<div class="metric-cards" style="margin-bottom: 1.5rem;">
+    <div class="metric-card">
+        <div class="metric-value">
+            <span class="status-badge status-{{ evaluation.status }}" style="font-size: 1rem;">{{ evaluation.status }}</span>
+        </div>
+        <div class="metric-label">Статус</div>
+    </div>
+    <div class="metric-card">
+        <div class="metric-value" id="progress-value">{{ evaluation.videos_done }}/{{ evaluation.total_videos }}</div>
+        <div class="metric-label">Видео обработано</div>
+    </div>
+    <div class="metric-card">
+        <div class="metric-value" id="errors-value">{{ evaluation.errors_count }}</div>
+        <div class="metric-label">Ошибки</div>
+    </div>
+    <div class="metric-card">
+        <div class="metric-value" id="eta-value">
+            {% if evaluation.avg_time_per_video and evaluation.status == 'running' %}
+                {{ "%.0f"|format((evaluation.total_videos - evaluation.videos_done) * evaluation.avg_time_per_video) }}с
+            {% elif evaluation.status == 'completed' %}
+                Done
+            {% else %}
+                -
+            {% endif %}
+        </div>
+        <div class="metric-label">ETA</div>
+    </div>
+</div>
+
+<!-- Large Progress Bar -->
+<div class="eval-progress-section" style="margin-bottom: 1.5rem;">
+    <div class="progress-bar-large">
+        <div class="progress-bar-fill-large" id="progress-bar"
+             style="width: {{ (evaluation.videos_done / evaluation.total_videos * 100) if evaluation.total_videos > 0 else 0 }}%">
+        </div>
+    </div>
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 0.5rem;">
+        <span id="progress-pct" style="font-size: 0.9rem; color: #636e72;">
+            {{ "%.1f"|format(evaluation.videos_done / evaluation.total_videos * 100) if evaluation.total_videos > 0 else 0 }}%
+        </span>
+        {% if evaluation.status == 'running' %}
+        <button class="btn btn-danger" id="cancel-btn" onclick="cancelEvaluation()">Отменить</button>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Metrics (after completion) -->
+{% set m = evaluation.get_metrics() %}
+{% if m %}
+<div class="metric-cards" style="margin-bottom: 1.5rem;">
+    <div class="metric-card">
+        <div class="metric-value {{ 'auc-high' if m.auc and m.auc >= 0.9 else ('auc-mid' if m.auc and m.auc >= 0.7 else 'auc-low') }}">
+            {{ "%.4f"|format(m.auc) if m.auc else "N/A" }}
+        </div>
+        <div class="metric-label">AUC</div>
+    </div>
+    <div class="metric-card">
+        <div class="metric-value">{{ "%.4f"|format(m.accuracy) if m.accuracy else "N/A" }}</div>
+        <div class="metric-label">Accuracy</div>
+    </div>
+    <div class="metric-card">
+        <div class="metric-value">{{ "%.4f"|format(m.eer) if m.eer else "N/A" }}</div>
+        <div class="metric-label">EER</div>
+    </div>
+    <div class="metric-card">
+        <div class="metric-value">{{ "%.4f"|format(m.ap) if m.ap else "N/A" }}</div>
+        <div class="metric-label">AP</div>
+    </div>
+    <div class="metric-card">
+        <div class="metric-value">{{ "%.4f"|format(m.precision) if m.precision else "N/A" }}</div>
+        <div class="metric-label">Precision</div>
+    </div>
+    <div class="metric-card">
+        <div class="metric-value">{{ "%.4f"|format(m.recall) if m.recall else "N/A" }}</div>
+        <div class="metric-label">Recall</div>
+    </div>
+    <div class="metric-card">
+        <div class="metric-value">{{ "%.4f"|format(m.f1) if m.f1 else "N/A" }}</div>
+        <div class="metric-label">F1</div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Publish / Unpublish -->
+{% if evaluation.status == 'completed' %}
+<div class="form-card" style="display: flex; align-items: center; gap: 1rem;">
+    {% if evaluation.is_published %}
+    <span class="status-badge status-verified">Опубликован на лидерборде</span>
+    <button class="btn btn-sm" onclick="togglePublish(false)">Снять с публикации</button>
+    {% else %}
+    <span class="status-badge status-pending">Не опубликован</span>
+    <button class="btn btn-sm btn-primary" onclick="togglePublish(true)">Опубликовать на лидерборд</button>
+    {% endif %}
+</div>
+{% endif %}
+
+<!-- Error message -->
+{% if evaluation.error_message %}
+<div class="form-card" style="border-left: 3px solid #e74c3c;">
+    <h3 style="color: #e74c3c;">Ошибка</h3>
+    <p style="font-family: monospace; font-size: 0.85rem; color: #636e72;">{{ evaluation.error_message }}</p>
+</div>
+{% endif %}
+
+<!-- Recent Scores Table -->
+<div class="section" style="margin-top: 1.5rem;">
+    <h3 style="font-size: 1.1rem; margin-bottom: 0.75rem;">Последние обработанные видео</h3>
+    <div class="table-wrapper">
+        <table class="runs-table" id="scores-table">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Видео</th>
+                    <th>Датасет</th>
+                    <th>Метка</th>
+                    <th>Score</th>
+                    <th>Предсказание</th>
+                    <th>Ошибка</th>
+                </tr>
+            </thead>
+            <tbody id="scores-body">
+                {% for s in recent_scores %}
+                <tr>
+                    <td>{{ loop.index }}</td>
+                    <td style="font-size:0.8rem; max-width:300px; overflow:hidden; text-overflow:ellipsis;">{{ s.video_path }}</td>
+                    <td>{{ s.dataset_key }}</td>
+                    <td class="{{ 'real-label' if s.label == 'real' else 'fake-label' }}">{{ s.label }}</td>
+                    <td>{{ "%.4f"|format(s.score) if s.score is not none else "-" }}</td>
+                    <td>{{ s.predicted_label or "-" }}</td>
+                    <td style="font-size:0.8rem; color:#e74c3c;">{{ s.error or "" }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+const evalId = {{ evaluation.id }};
+const evalStatus = '{{ evaluation.status }}';
+let pollInterval = null;
+
+if (evalStatus === 'running' || evalStatus === 'pending') {
+    pollInterval = setInterval(pollProgress, 2000);
+}
+
+function pollProgress() {
+    fetch('/api/evaluations/' + evalId)
+    .then(r => r.json())
+    .then(data => {
+        // Update progress
+        document.getElementById('progress-value').textContent = data.videos_done + '/' + data.total_videos;
+        document.getElementById('errors-value').textContent = data.errors_count;
+
+        const pct = data.total_videos > 0 ? (data.videos_done / data.total_videos * 100) : 0;
+        document.getElementById('progress-bar').style.width = pct + '%';
+        document.getElementById('progress-pct').textContent = pct.toFixed(1) + '%';
+
+        // ETA
+        if (data.avg_time_per_video && data.status === 'running') {
+            const remaining = (data.total_videos - data.videos_done) * data.avg_time_per_video;
+            if (remaining > 60) {
+                document.getElementById('eta-value').textContent = Math.round(remaining / 60) + 'мин';
+            } else {
+                document.getElementById('eta-value').textContent = Math.round(remaining) + 'с';
+            }
+        }
+
+        // Stop polling on terminal state
+        if (data.status !== 'running' && data.status !== 'pending') {
+            clearInterval(pollInterval);
+            location.reload();
+        }
+    })
+    .catch(() => {});
+}
+
+function cancelEvaluation() {
+    if (!confirm('Отменить прогон?')) return;
+    fetch('/api/evaluations/' + evalId + '/cancel', { method: 'POST' })
+    .then(r => r.json())
+    .then(data => {
+        if (data.error) alert(data.error);
+        else location.reload();
+    })
+    .catch(err => alert('Ошибка: ' + err));
+}
+
+function togglePublish(publish) {
+    fetch('/api/evaluations/' + evalId + '/publish', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ publish: publish }),
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.error) alert(data.error);
+        else location.reload();
+    })
+    .catch(err => alert('Ошибка: ' + err));
+}
+</script>
+{% endblock %}

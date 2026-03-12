@@ -93,6 +93,10 @@ file: &lt;video.mp4&gt; (binary)</div>
     </div>
 </div>
 
+<div id="goto-dashboard" style="display: none; margin-top: 1rem;">
+    <a href="{{ url_for('user_dashboard') }}" class="btn btn-primary">Перейти в личный кабинет</a>
+</div>
+
 {% endblock %}
 
 {% block scripts %}
@@ -131,6 +135,8 @@ document.getElementById('register-form').addEventListener('submit', function(e) 
         btn.textContent = 'Сохранено';
         // Показать панель тестирования
         document.getElementById('test-panel').style.display = 'block';
+        // Показать кнопку перехода в личный кабинет
+        document.getElementById('goto-dashboard').style.display = 'block';
         // Заблокировать форму
         document.querySelectorAll('#register-form input, #register-form textarea').forEach(el => el.disabled = true);
     })

@@ -1,0 +1,228 @@
+{% extends "base.html" %}
+{% block title %}Личный кабинет - {{ current_user.username }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Личный кабинет</h1>
+    <p class="subtitle">{{ current_user.username }} &middot; <span class="role-badge role-{{ current_user.role }}">{{ current_user.role }}</span></p>
+</div>
+
+<!-- My Detectors -->
+<div class="section">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+        <h2 style="font-size: 1.2rem;">Мои детекторы</h2>
+        <a href="{{ url_for('register_detector_page') }}" class="btn btn-primary">+ Зарегистрировать детектор</a>
+    </div>
+
+    {% if detectors %}
+    <div class="detectors-grid">
+        {% for d in detectors %}
+        <div class="detector-card" id="det-card-{{ d.id }}">
+            <div class="detector-card-header">
+                <h3>{{ d.name }}</h3>
+                <span class="status-badge status-{{ d.status }}">{{ d.status }}</span>
+            </div>
+            <div class="detector-card-url">{{ d.api_url }}</div>
+            {% if d.description %}
+            <p class="detector-card-desc">{{ d.description }}</p>
+            {% endif %}
+            <div class="detector-card-meta">
+                {% if d.author %}<span>{{ d.author }}</span>{% endif %}
+                {% if d.paper_url %}<a href="{{ d.paper_url }}" target="_blank">Paper</a>{% endif %}
+                {% if d.github_url %}<a href="{{ d.github_url }}" target="_blank">GitHub</a>{% endif %}
+            </div>
+            <div class="detector-card-actions">
+                <button class="btn btn-sm" onclick="testDetector({{ d.id }})">Test</button>
+                <button class="btn btn-sm btn-primary" onclick="showRunDialog({{ d.id }}, '{{ d.name }}')">Запустить прогон</button>
+                <button class="btn btn-sm btn-danger" onclick="deleteDetector({{ d.id }}, '{{ d.name }}')">Delete</button>
+            </div>
+            <div class="detector-test-results" id="det-results-{{ d.id }}" style="display:none;"></div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <p>Нет зарегистрированных детекторов</p>
+        <p class="hint"><a href="{{ url_for('register_detector_page') }}">Зарегистрируйте</a> свой первый детектор</p>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Run Evaluation Dialog (modal) -->
+<div class="modal-overlay" id="run-modal" style="display:none;">
+    <div class="modal-content">
+        <h3 id="run-modal-title">Запуск прогона</h3>
+        <div class="form-group">
+            <label>Тестовый набор</label>
+            <select id="run-test-set" class="form-select">
+                {% for ts in test_sets %}
+                <option value="{{ ts.id }}">{{ ts.name }} ({{ ts.total_videos }} видео)</option>
+                {% endfor %}
+            </select>
+            {% if not test_sets %}
+            <span class="form-hint">Нет доступных тестовых наборов. Обратитесь к администратору.</span>
+            {% endif %}
+        </div>
+        <input type="hidden" id="run-detector-id">
+        <div style="display: flex; gap: 0.5rem; margin-top: 1rem;">
+            <button class="btn btn-primary" onclick="startEvaluation()" {% if not test_sets %}disabled{% endif %}>Запустить</button>
+            <button class="btn" onclick="closeRunModal()">Отмена</button>
+        </div>
+    </div>
+</div>
+
+<!-- My Evaluations -->
+<div class="section" style="margin-top: 2rem;">
+    <h2 style="font-size: 1.2rem; margin-bottom: 1rem;">Мои прогоны</h2>
+
+    {% if evaluations %}
+    <div class="table-wrapper">
+        <table class="runs-table">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Детектор</th>
+                    <th>Тестовый набор</th>
+                    <th>Статус</th>
+                    <th>Прогресс</th>
+                    <th>AUC</th>
+                    <th>Accuracy</th>
+                    <th>F1</th>
+                    <th>Публикация</th>
+                    <th>Дата</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for ev in evaluations %}
+                <tr class="clickable-row" onclick="window.location='/evaluation/{{ ev.id }}'">
+                    <td>{{ ev.id }}</td>
+                    <td>{{ ev.detector.name if ev.detector else '?' }}</td>
+                    <td>{{ ev.test_set.name if ev.test_set else '?' }}</td>
+                    <td>
+                        <span class="status-badge status-{{ ev.status }}">{{ ev.status }}</span>
+                    </td>
+                    <td>
+                        {% if ev.status == 'running' %}
+                        <div class="progress-bar-container">
+                            <div class="progress-bar-fill" style="width: {{ (ev.videos_done / ev.total_videos * 100) if ev.total_videos > 0 else 0 }}%"></div>
+                        </div>
+                        <span class="progress-text">{{ ev.videos_done }}/{{ ev.total_videos }}</span>
+                        {% elif ev.status == 'completed' %}
+                        {{ ev.total_videos }}/{{ ev.total_videos }}
+                        {% elif ev.status == 'failed' %}
+                        {{ ev.videos_done }}/{{ ev.total_videos }}
+                        {% else %}
+                        -
+                        {% endif %}
+                    </td>
+                    {% set m = ev.get_metrics() %}
+                    <td class="{{ 'auc-high' if m and m.auc and m.auc >= 0.9 else ('auc-mid' if m and m.auc and m.auc >= 0.7 else 'auc-low') if m and m.auc else '' }}">
+                        {{ "%.4f"|format(m.auc) if m and m.auc else "-" }}
+                    </td>
+                    <td>{{ "%.4f"|format(m.accuracy) if m and m.accuracy else "-" }}</td>
+                    <td>{{ "%.4f"|format(m.f1) if m and m.f1 else "-" }}</td>
+                    <td>
+                        {% if ev.status == 'completed' %}
+                            {% if ev.is_published %}
+                            <span class="status-badge status-verified">Опубликован</span>
+                            {% else %}
+                            <span class="status-badge status-pending">Не опубликован</span>
+                            {% endif %}
+                        {% else %}
+                        -
+                        {% endif %}
+                    </td>
+                    <td class="date-cell">{{ ev.created_at.strftime('%Y-%m-%d %H:%M') if ev.created_at else '-' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <p>Нет прогонов</p>
+        <p class="hint">Зарегистрируйте детектор и запустите прогон на тестовом наборе</p>
+    </div>
+    {% endif %}
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+function testDetector(id) {
+    const resultsDiv = document.getElementById('det-results-' + id);
+    resultsDiv.style.display = 'block';
+    resultsDiv.innerHTML = '<p style="color:#7f8c8d;font-size:0.85rem;">Тестирование...</p>';
+
+    fetch('/api/user/detectors/' + id + '/test', { method: 'POST' })
+    .then(r => r.json())
+    .then(result => {
+        let html = '';
+        result.checks.forEach(function(check) {
+            const cls = check.passed ? 'check-pass' : 'check-fail';
+            const icon = check.passed ? '&#10004;' : '&#10008;';
+            html += '<div class="check-item ' + cls + '">'
+                + '<span class="check-icon">' + icon + '</span>'
+                + '<strong>' + check.name + '</strong> '
+                + '<span class="check-detail">' + check.detail + '</span></div>';
+        });
+        if (result.all_passed) {
+            html += '<div class="status-badge status-verified" style="margin-top:0.5rem;">Все проверки пройдены</div>';
+        } else {
+            html += '<div class="status-badge status-error" style="margin-top:0.5rem;">Есть ошибки</div>';
+        }
+        resultsDiv.innerHTML = html;
+    })
+    .catch(err => {
+        resultsDiv.innerHTML = '<p style="color:#e74c3c;font-size:0.85rem;">Ошибка: ' + err + '</p>';
+    });
+}
+
+function deleteDetector(id, name) {
+    if (!confirm('Удалить детектор "' + name + '"?')) return;
+    fetch('/api/user/detectors/' + id, { method: 'DELETE' })
+    .then(r => r.json())
+    .then(result => {
+        if (result.ok) {
+            document.getElementById('det-card-' + id).remove();
+        } else {
+            alert(result.error || 'Ошибка удаления');
+        }
+    })
+    .catch(err => alert('Ошибка: ' + err));
+}
+
+function showRunDialog(detectorId, detectorName) {
+    document.getElementById('run-detector-id').value = detectorId;
+    document.getElementById('run-modal-title').textContent = 'Запуск прогона: ' + detectorName;
+    document.getElementById('run-modal').style.display = 'flex';
+}
+
+function closeRunModal() {
+    document.getElementById('run-modal').style.display = 'none';
+}
+
+function startEvaluation() {
+    const detectorId = document.getElementById('run-detector-id').value;
+    const testSetId = document.getElementById('run-test-set').value;
+    if (!detectorId || !testSetId) return;
+
+    fetch('/api/evaluations', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ detector_id: parseInt(detectorId), test_set_id: parseInt(testSetId) }),
+    })
+    .then(r => r.json())
+    .then(result => {
+        closeRunModal();
+        if (result.error) {
+            alert(result.error);
+        } else {
+            window.location = '/evaluation/' + result.id;
+        }
+    })
+    .catch(err => alert('Ошибка: ' + err));
+}
+</script>
+{% endblock %}
