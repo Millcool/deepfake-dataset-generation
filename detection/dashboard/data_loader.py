@@ -63,11 +63,20 @@ def _scan_uncached():
         cm_raw = metrics.get("confusion_matrix", {})
         cm = cm_raw.get("overall", {}) if isinstance(cm_raw, dict) else {}
 
+        # Извлечь detector/dataset: если пустые или detector приклеен к dataset
+        raw_detector = metrics.get("detector", "")
+        raw_dataset = metrics.get("dataset", "")
+        if not raw_detector:
+            raw_detector = _extract_detector_from_name(entry) or _extract_detector_from_name(raw_dataset)
+        if not raw_dataset:
+            raw_dataset = _extract_dataset_from_run_id(entry)
+        raw_dataset = _strip_detector_suffix(raw_dataset)
+
         run_info = {
             "id": entry,
             "path": run_path,
-            "detector": metrics.get("detector", ""),
-            "dataset": metrics.get("dataset", "") or _extract_dataset_from_run_id(entry),
+            "detector": raw_detector,
+            "dataset": raw_dataset,
             "date": date_str,
             "total_videos": metrics.get("total_videos", 0),
             "fake_count": metrics.get("fake_count", metrics.get("fake_videos", 0)),
@@ -106,6 +115,25 @@ def invalidate_cache():
     _cache_ts = 0
 
 
+KNOWN_DETECTORS = ["clip_dfdet", "altfreezing", "genconvit", "cvit", "sbi", "npr", "clip"]
+
+
+def _extract_detector_from_name(name):
+    """Извлечь имя детектора из строки (run_id или dataset name)."""
+    for det in KNOWN_DETECTORS:
+        if name.endswith("_" + det):
+            return det
+    return ""
+
+
+def _strip_detector_suffix(name):
+    """Убрать суффикс детектора из строки."""
+    for det in KNOWN_DETECTORS:
+        if name.endswith("_" + det):
+            return name[:-(len(det) + 1)]
+    return name
+
+
 def _extract_dataset_from_run_id(run_id):
     """Извлечь имя датасета из run_id (напр. 20260305_112548_BlendSwap_FFpp_clip_dfdet)."""
     parts = run_id.split("_")
@@ -115,14 +143,8 @@ def _extract_dataset_from_run_id(run_id):
         if p.isdigit() and len(p) >= 6:
             continue
         name_parts.append(p)
-    # Последние 1-2 части — детектор (genconvit, clip_dfdet и т.п.)
-    # Пробуем убрать известные суффиксы
     name = "_".join(name_parts)
-    known = ["_clip_dfdet", "_altfreezing", "_genconvit", "_cvit", "_sbi", "_npr", "_clip"]
-    for suffix in known:
-        if name.endswith(suffix):
-            return name[:-len(suffix)]
-    return name
+    return _strip_detector_suffix(name)
 
 
 def _normalize_metrics(metrics, run_id):
@@ -234,15 +256,53 @@ def get_scores_df(run_id):
 def get_scores_array(run_id):
     """Компактный массив [score, is_fake] для клиентского пересчёта CM."""
     rows = get_scores_df(run_id)
-    if not rows:
+    if rows:
+        result = []
+        for r in rows:
+            if r["score"] < 0:
+                continue
+            is_fake = 1 if r.get("label") == "fake" else 0
+            result.append([round(r["score"], 6), is_fake])
+        return result
+
+    # Fallback: реконструировать из гистограммы в metrics.json
+    return _reconstruct_scores_from_histogram(run_id)
+
+
+def _reconstruct_scores_from_histogram(run_id):
+    """Построить приблизительный scores_array из histogram buckets в metrics.json."""
+    metrics = get_run(run_id)
+    if not metrics:
         return None
+    raw = _load_metrics(run_id)
+    if not raw:
+        return None
+    histogram = raw.get("histogram", {})
+    buckets = histogram.get("buckets", [])
+    if not buckets:
+        return None
+
     result = []
-    for r in rows:
-        if r["score"] < 0:
-            continue
-        is_fake = 1 if r.get("label") == "fake" else 0
-        result.append([round(r["score"], 6), is_fake])
-    return result
+    for b in buckets:
+        lo = b.get("lo", 0)
+        hi = b.get("hi", 0)
+        mid = round((lo + hi) / 2, 4)
+        for _ in range(b.get("fake_count", 0)):
+            result.append([mid, 1])
+        for _ in range(b.get("real_count", 0)):
+            result.append([mid, 0])
+    return result if result else None
+
+
+def _load_metrics(run_id):
+    """Загрузить raw metrics.json."""
+    if not RUNS_DIR:
+        return None
+    path = os.path.join(RUNS_DIR, run_id, "metrics.json")
+    if not os.path.isfile(path):
+        return None
+    with open(path) as f:
+        return json.load(f)
 
 
 def compute_roc_data(run_id):
