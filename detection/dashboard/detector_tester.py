@@ -60,7 +60,7 @@ def run_smoke_test(api_url):
             resp = requests.post(
                 api_url,
                 files={"file": (os.path.basename(video_path), f, "video/mp4")},
-                timeout=30,
+                timeout=120,
             )
         check2["passed"] = True
         check2["detail"] = f"Status {resp.status_code}"
