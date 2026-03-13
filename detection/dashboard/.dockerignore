@@ -2,7 +2,7 @@
 __pycache__
 *.pyc
 .git
-static/test_videos/*.mp4
+# Keep test videos for smoke tests
 nginx
 docker-compose.yml
 deploy.sh
