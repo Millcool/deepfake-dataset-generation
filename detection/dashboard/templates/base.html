@@ -5,6 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Дашборд детекции дипфейков{% endblock %}</title>
     <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
@@ -13,13 +16,14 @@
             <a href="{{ url_for('index') }}">Дашборд детекции дипфейков</a>
         </div>
         <div class="nav-links">
-            <a href="{{ url_for('index') }}">Обзор</a>
-            <a href="{{ url_for('rankings') }}">Рейтинги</a>
-            <a href="{{ url_for('detectors_list') }}">Детекторы</a>
+            <a href="{{ url_for('index') }}" class="{% if request.endpoint == 'index' %}active{% endif %}">Обзор</a>
+            <a href="{{ url_for('rankings') }}" class="{% if request.endpoint == 'rankings' %}active{% endif %}">Рейтинги</a>
+            <a href="{{ url_for('detectors_list') }}" class="{% if request.endpoint == 'detectors_list' %}active{% endif %}">Детекторы</a>
+            <a href="{{ url_for('photo_check_page') }}" class="{% if request.endpoint == 'photo_check_page' %}active{% endif %}">Проверка фото</a>
             {% if current_user.is_authenticated %}
-            <a href="{{ url_for('user_dashboard') }}">Мой дашборд</a>
+            <a href="{{ url_for('user_dashboard') }}" class="{% if request.endpoint == 'user_dashboard' %}active{% endif %}">Мой дашборд</a>
             {% if current_user.is_admin %}
-            <a href="{{ url_for('admin_test_sets') }}">Тестовые наборы</a>
+            <a href="{{ url_for('admin_test_sets') }}" class="{% if request.endpoint == 'admin_test_sets' %}active{% endif %}">Тестовые наборы</a>
             {% endif %}
             <span id="sync-status" class="sync-indicator"></span>
             {% if current_user.is_admin %}

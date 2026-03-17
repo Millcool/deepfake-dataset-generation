@@ -156,6 +156,48 @@ class Evaluation(db.Model):
         }
 
 
+class PhotoCheck(db.Model):
+    __tablename__ = "photo_checks"
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    uuid = db.Column(db.Text, unique=True, nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    filename = db.Column(db.Text, nullable=False)
+    file_size = db.Column(db.Integer, default=0)
+    status = db.Column(db.Text, default="pending")  # pending/uploading/running/completed/failed
+    current_step = db.Column(db.Text, default="")
+    detectors_done = db.Column(db.Integer, default=0)
+    detectors_total = db.Column(db.Integer, default=6)
+    results = db.Column(db.Text)  # JSON
+    error_message = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    completed_at = db.Column(db.DateTime)
+
+    user = db.relationship("User", backref="photo_checks")
+
+    def get_results(self):
+        return json.loads(self.results) if self.results else None
+
+    def set_results(self, r):
+        self.results = json.dumps(r)
+
+    def to_dict(self):
+        return {
+            "uuid": self.uuid,
+            "user_id": self.user_id,
+            "filename": self.filename,
+            "file_size": self.file_size,
+            "status": self.status,
+            "current_step": self.current_step,
+            "detectors_done": self.detectors_done,
+            "detectors_total": self.detectors_total,
+            "results": self.get_results(),
+            "error_message": self.error_message,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
+        }
+
+
 class EvaluationScore(db.Model):
     __tablename__ = "evaluation_scores"
 

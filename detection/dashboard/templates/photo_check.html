@@ -1,0 +1,218 @@
+{% extends "base.html" %}
+{% block title %}Проверка фото — Дашборд детекции дипфейков{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Проверка фото на дипфейк</h1>
+    <p class="page-subtitle">Загрузите фотографию и 6 нейросетей-детекторов проанализируют её за ~30-60 секунд</p>
+</div>
+
+<!-- Upload Zone -->
+<div class="card photo-upload-card">
+    <div id="upload-zone" class="upload-zone">
+        <div class="upload-zone-content">
+            <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="17 8 12 3 7 8"/>
+                <line x1="12" y1="3" x2="12" y2="15"/>
+            </svg>
+            <p class="upload-text">Перетащите фото сюда или <span class="upload-link">выберите файл</span></p>
+            <p class="upload-hint">JPEG или PNG, до 10 МБ</p>
+        </div>
+        <input type="file" id="file-input" accept=".jpg,.jpeg,.png" style="display:none">
+    </div>
+
+    <!-- Preview -->
+    <div id="preview-section" style="display:none">
+        <div class="upload-preview">
+            <img id="preview-img" alt="Preview">
+            <div class="preview-info">
+                <span id="preview-name"></span>
+                <span id="preview-size"></span>
+                <button class="btn btn-sm btn-outline" id="remove-btn">Убрать</button>
+            </div>
+        </div>
+        <button class="btn btn-primary btn-lg" id="check-btn">Проверить на дипфейк</button>
+    </div>
+
+    <!-- Upload progress -->
+    <div id="upload-progress" style="display:none">
+        <div class="upload-progress-bar">
+            <div class="upload-progress-fill" id="progress-fill"></div>
+        </div>
+        <p class="upload-status" id="upload-status">Загрузка...</p>
+    </div>
+
+    <!-- Error -->
+    <div id="upload-error" class="alert alert-error" style="display:none">
+        <span id="error-text"></span>
+    </div>
+</div>
+
+<!-- History -->
+{% if checks %}
+<div class="card" style="margin-top: 1.5rem;">
+    <h2 class="card-title">История проверок</h2>
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Файл</th>
+                <th>Размер</th>
+                <th>Статус</th>
+                <th>Вердикт</th>
+                <th>Дата</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for c in checks %}
+            <tr>
+                <td class="mono">{{ c.filename }}</td>
+                <td>{{ (c.file_size / 1024)|round(1) }} КБ</td>
+                <td>
+                    {% if c.status == 'completed' %}
+                    <span class="status-badge status-completed">Готово</span>
+                    {% elif c.status == 'failed' %}
+                    <span class="status-badge status-failed">Ошибка</span>
+                    {% elif c.status in ('pending', 'uploading', 'running') %}
+                    <span class="status-badge status-running">В процессе</span>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if c.status == 'completed' and c.get_results() %}
+                        {% set verdict = c.get_results().get('consensus', {}).get('verdict', '') %}
+                        {% if verdict == 'fake' %}
+                        <span class="verdict-badge verdict-fake">FAKE</span>
+                        {% elif verdict == 'real' %}
+                        <span class="verdict-badge verdict-real">REAL</span>
+                        {% else %}
+                        <span class="verdict-badge">N/A</span>
+                        {% endif %}
+                    {% else %}
+                    —
+                    {% endif %}
+                </td>
+                <td>{{ c.created_at.strftime('%d.%m.%Y %H:%M') if c.created_at else '' }}</td>
+                <td><a href="{{ url_for('photo_check_result', check_uuid=c.uuid) }}" class="btn btn-sm">Подробнее</a></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+const uploadZone = document.getElementById('upload-zone');
+const fileInput = document.getElementById('file-input');
+const previewSection = document.getElementById('preview-section');
+const previewImg = document.getElementById('preview-img');
+const previewName = document.getElementById('preview-name');
+const previewSize = document.getElementById('preview-size');
+const removeBtn = document.getElementById('remove-btn');
+const checkBtn = document.getElementById('check-btn');
+const uploadProgress = document.getElementById('upload-progress');
+const progressFill = document.getElementById('progress-fill');
+const uploadStatus = document.getElementById('upload-status');
+const uploadError = document.getElementById('upload-error');
+const errorText = document.getElementById('error-text');
+
+let selectedFile = null;
+
+// Drag & drop
+uploadZone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    uploadZone.classList.add('drag-over');
+});
+uploadZone.addEventListener('dragleave', () => {
+    uploadZone.classList.remove('drag-over');
+});
+uploadZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    uploadZone.classList.remove('drag-over');
+    if (e.dataTransfer.files.length > 0) {
+        handleFile(e.dataTransfer.files[0]);
+    }
+});
+uploadZone.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', () => {
+    if (fileInput.files.length > 0) handleFile(fileInput.files[0]);
+});
+
+function handleFile(file) {
+    const ext = file.name.split('.').pop().toLowerCase();
+    if (!['jpg', 'jpeg', 'png'].includes(ext)) {
+        showError('Недопустимый формат. Разрешены: JPG, PNG');
+        return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+        showError('Файл слишком большой (макс. 10 МБ)');
+        return;
+    }
+    selectedFile = file;
+    hideError();
+
+    // Show preview
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        previewImg.src = e.target.result;
+        previewName.textContent = file.name;
+        previewSize.textContent = (file.size / 1024).toFixed(1) + ' КБ';
+        uploadZone.style.display = 'none';
+        previewSection.style.display = 'block';
+    };
+    reader.readAsDataURL(file);
+}
+
+removeBtn.addEventListener('click', () => {
+    selectedFile = null;
+    fileInput.value = '';
+    previewSection.style.display = 'none';
+    uploadZone.style.display = 'flex';
+});
+
+checkBtn.addEventListener('click', async () => {
+    if (!selectedFile) return;
+    checkBtn.disabled = true;
+    previewSection.style.display = 'none';
+    uploadProgress.style.display = 'block';
+    progressFill.style.width = '10%';
+    uploadStatus.textContent = 'Загрузка фото...';
+
+    const formData = new FormData();
+    formData.append('file', selectedFile);
+
+    try {
+        const resp = await fetch('/api/photo-check', { method: 'POST', body: formData });
+        const data = await resp.json();
+
+        if (!resp.ok) {
+            showError(data.error || 'Ошибка загрузки');
+            uploadProgress.style.display = 'none';
+            previewSection.style.display = 'block';
+            checkBtn.disabled = false;
+            return;
+        }
+
+        // Redirect to result page
+        window.location.href = '/photo-check/' + data.uuid;
+
+    } catch (err) {
+        showError('Ошибка сети: ' + err.message);
+        uploadProgress.style.display = 'none';
+        previewSection.style.display = 'block';
+        checkBtn.disabled = false;
+    }
+});
+
+function showError(msg) {
+    errorText.textContent = msg;
+    uploadError.style.display = 'block';
+}
+function hideError() {
+    uploadError.style.display = 'none';
+}
+</script>
+{% endblock %}

@@ -28,7 +28,8 @@ import catalog
 import detector_registry
 import detector_tester
 import evaluation_runner
-from models import db, User, Detector, TestSet, Evaluation, EvaluationScore
+import photo_checker
+from models import db, User, Detector, TestSet, Evaluation, EvaluationScore, PhotoCheck
 from auth import login_manager, admin_required
 
 app = Flask(__name__)
@@ -767,6 +768,112 @@ def api_evaluations_publish(eval_id):
     ev.is_published = 1 if data.get("publish", True) else 0
     db.session.commit()
     return jsonify(ev.to_dict())
+
+
+# ── Photo Check ───────────────────────────────────────────────
+
+PHOTO_UPLOADS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "photo_uploads")
+ALLOWED_IMAGE_EXT = {".jpg", ".jpeg", ".png"}
+MAX_IMAGE_SIZE = 10 * 1024 * 1024  # 10 MB
+
+
+@app.route("/photo-check")
+@login_required
+def photo_check_page():
+    """Upload page + history of checks."""
+    checks = PhotoCheck.query.filter_by(user_id=current_user.id)\
+        .order_by(PhotoCheck.id.desc()).limit(20).all()
+    return render_template("photo_check.html", checks=checks)
+
+
+@app.route("/photo-check/<check_uuid>")
+@login_required
+def photo_check_result(check_uuid):
+    """Result page for a specific check."""
+    check = PhotoCheck.query.filter_by(uuid=check_uuid).first_or_404()
+    if check.user_id != current_user.id and not current_user.is_admin:
+        abort(403)
+    return render_template("photo_check_result.html", check=check)
+
+
+@app.route("/api/photo-check", methods=["POST"])
+@login_required
+def api_photo_check_upload():
+    """Upload photo and start deepfake check."""
+    # Check for active check by this user
+    active = PhotoCheck.query.filter_by(
+        user_id=current_user.id
+    ).filter(PhotoCheck.status.in_(["pending", "uploading", "running"])).first()
+    if active:
+        return jsonify({"error": "У вас уже есть активная проверка. Дождитесь завершения."}), 400
+
+    f = request.files.get("file")
+    if not f or not f.filename:
+        return jsonify({"error": "Файл не выбран"}), 400
+
+    ext = os.path.splitext(f.filename)[1].lower()
+    if ext not in ALLOWED_IMAGE_EXT:
+        return jsonify({"error": f"Недопустимый формат. Разрешены: {', '.join(ALLOWED_IMAGE_EXT)}"}), 400
+
+    # Read and validate size
+    image_data = f.read()
+    if len(image_data) > MAX_IMAGE_SIZE:
+        return jsonify({"error": f"Файл слишком большой (макс. {MAX_IMAGE_SIZE // 1024 // 1024} МБ)"}), 400
+    if len(image_data) == 0:
+        return jsonify({"error": "Пустой файл"}), 400
+
+    # Save locally
+    import uuid as uuid_mod
+    check_uuid = uuid_mod.uuid4().hex[:16]
+    safe_filename = f"{check_uuid}_{os.path.basename(f.filename)}"
+
+    os.makedirs(PHOTO_UPLOADS_DIR, exist_ok=True)
+    local_path = os.path.join(PHOTO_UPLOADS_DIR, safe_filename)
+    with open(local_path, "wb") as out:
+        out.write(image_data)
+
+    # Create DB record
+    check = PhotoCheck(
+        uuid=check_uuid,
+        user_id=current_user.id,
+        filename=os.path.basename(f.filename),
+        file_size=len(image_data),
+        status="pending",
+        current_step="Queued...",
+    )
+    db.session.add(check)
+    db.session.commit()
+
+    # Start background check
+    photo_checker.start_photo_check(check.id, app)
+
+    return jsonify(check.to_dict()), 201
+
+
+@app.route("/api/photo-check/<check_uuid>", methods=["GET"])
+@login_required
+def api_photo_check_status(check_uuid):
+    """Poll status of a photo check."""
+    check = PhotoCheck.query.filter_by(uuid=check_uuid).first_or_404()
+    if check.user_id != current_user.id and not current_user.is_admin:
+        abort(403)
+    return jsonify(check.to_dict())
+
+
+@app.route("/api/photo-check/<check_uuid>/image")
+@login_required
+def api_photo_check_image(check_uuid):
+    """Serve the uploaded image."""
+    check = PhotoCheck.query.filter_by(uuid=check_uuid).first_or_404()
+    if check.user_id != current_user.id and not current_user.is_admin:
+        abort(403)
+    safe_filename = f"{check_uuid}_{check.filename}"
+    local_path = os.path.join(PHOTO_UPLOADS_DIR, safe_filename)
+    if not os.path.isfile(local_path):
+        abort(404)
+    ext = os.path.splitext(check.filename)[1].lower()
+    mime = "image/jpeg" if ext in (".jpg", ".jpeg") else "image/png"
+    return send_file(local_path, mimetype=mime)
 
 
 # ── Mock Detector ─────────────────────────────────────────────

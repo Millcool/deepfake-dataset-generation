@@ -1,0 +1,185 @@
+{% extends "base.html" %}
+{% block title %}Результат проверки — Дашборд детекции дипфейков{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div style="display:flex; align-items:center; gap:1rem;">
+        <a href="{{ url_for('photo_check_page') }}" class="btn btn-sm btn-outline">Назад</a>
+        <h1>Результат проверки</h1>
+    </div>
+    <p class="page-subtitle mono">{{ check.filename }} &middot; {{ (check.file_size / 1024)|round(1) }} КБ</p>
+</div>
+
+<!-- Processing state -->
+<div id="processing-state" {% if check.status in ('completed', 'failed') %}style="display:none"{% endif %}>
+    <div class="card photo-processing-card">
+        <div class="processing-spinner"></div>
+        <h2 id="proc-title">Анализ фотографии...</h2>
+        <p id="proc-step" class="text-secondary">{{ check.current_step }}</p>
+        <div class="processing-progress">
+            <div class="processing-progress-bar">
+                <div class="processing-progress-fill" id="proc-fill" style="width: 0%"></div>
+            </div>
+            <span class="processing-progress-text" id="proc-text">0 / {{ check.detectors_total }}</span>
+        </div>
+    </div>
+</div>
+
+<!-- Error state -->
+<div id="error-state" {% if check.status != 'failed' %}style="display:none"{% endif %}>
+    <div class="card" style="border-left: 4px solid var(--color-error);">
+        <h2 style="color: var(--color-error);">Ошибка проверки</h2>
+        <p id="error-msg">{{ check.error_message or '' }}</p>
+        <a href="{{ url_for('photo_check_page') }}" class="btn btn-primary" style="margin-top:1rem;">Попробовать снова</a>
+    </div>
+</div>
+
+<!-- Results state -->
+<div id="results-state" {% if check.status != 'completed' %}style="display:none"{% endif %}>
+    {% set results = check.get_results() or {} %}
+    {% set consensus = results.get('consensus', {}) %}
+    {% set detectors = results.get('detectors', {}) %}
+
+    <!-- Main verdict -->
+    <div class="photo-result-layout">
+        <div class="photo-result-image">
+            <img src="{{ url_for('api_photo_check_image', check_uuid=check.uuid) }}" alt="Uploaded photo">
+        </div>
+        <div class="photo-result-verdict">
+            <div id="verdict-card" class="verdict-card verdict-{{ consensus.get('verdict', 'unknown') }}">
+                <div class="verdict-label" id="verdict-label">{{ consensus.get('verdict', 'N/A')|upper }}</div>
+                <div class="verdict-confidence" id="verdict-confidence">
+                    {% if consensus.get('mean_score') is not none %}
+                    Средний score: {{ '%.1f'|format(consensus.get('mean_score', 0) * 100) }}%
+                    {% endif %}
+                </div>
+                <div class="verdict-details" id="verdict-details">
+                    {% if consensus.get('confidence') %}
+                    Уверенность: <strong>{{ consensus.get('confidence') }}</strong>
+                    {% endif %}
+                    <br>
+                    {{ consensus.get('fake_count', 0) }} детекторов: FAKE &middot;
+                    {{ consensus.get('real_count', 0) }} детекторов: REAL
+                    {% if consensus.get('error_count', 0) > 0 %}
+                    &middot; {{ consensus.get('error_count', 0) }} ошибок
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Detector cards -->
+    <h2 style="margin: 2rem 0 1rem;">Результаты по детекторам</h2>
+    <div class="detector-results-grid" id="detector-grid">
+        {% set detector_names = {
+            'genconvit': 'GenConViT',
+            'clip_dfdet': 'CLIP-DFDet',
+            'sbi': 'SBI',
+            'npr': 'NPR',
+            'laanet': 'LAA-Net',
+            'altfreezing': 'AltFreezing'
+        } %}
+        {% set detector_order = ['genconvit', 'clip_dfdet', 'sbi', 'npr', 'laanet', 'altfreezing'] %}
+
+        {% for det_key in detector_order %}
+        {% set det = detectors.get(det_key, {}) %}
+        <div class="detector-result-card {% if det.get('error') %}detector-error{% elif det.get('label') == 'fake' %}detector-fake{% else %}detector-real{% endif %}">
+            <div class="detector-result-header">
+                <span class="detector-result-name">{{ detector_names.get(det_key, det_key) }}</span>
+                {% if det.get('error') %}
+                <span class="detector-result-badge badge-error">N/A</span>
+                {% elif det.get('label') == 'fake' %}
+                <span class="detector-result-badge badge-fake">FAKE</span>
+                {% else %}
+                <span class="detector-result-badge badge-real">REAL</span>
+                {% endif %}
+            </div>
+
+            {% if det.get('score') is not none %}
+            <div class="score-bar-container">
+                <div class="score-bar">
+                    <div class="score-bar-fill {% if det.get('score', 0) >= 0.5 %}score-bar-fake{% else %}score-bar-real{% endif %}"
+                         style="width: {{ (det.get('score', 0) * 100)|round(1) }}%"></div>
+                </div>
+                <span class="score-value mono">{{ '%.1f'|format(det.get('score', 0) * 100) }}%</span>
+            </div>
+            {% endif %}
+
+            <div class="detector-result-footer">
+                {% if det.get('error') %}
+                <span class="text-secondary">{{ det.get('error') }}</span>
+                {% elif det.get('time') %}
+                <span class="text-secondary">{{ det.get('time') }}s</span>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+const checkUuid = "{{ check.uuid }}";
+let currentStatus = "{{ check.status }}";
+
+function pollStatus() {
+    if (currentStatus === 'completed' || currentStatus === 'failed') return;
+
+    fetch('/api/photo-check/' + checkUuid)
+        .then(r => r.json())
+        .then(data => {
+            currentStatus = data.status;
+            updateUI(data);
+            if (data.status !== 'completed' && data.status !== 'failed') {
+                setTimeout(pollStatus, 3000);
+            }
+        })
+        .catch(() => setTimeout(pollStatus, 5000));
+}
+
+function updateUI(data) {
+    const procState = document.getElementById('processing-state');
+    const errorState = document.getElementById('error-state');
+    const resultsState = document.getElementById('results-state');
+
+    if (data.status === 'completed') {
+        procState.style.display = 'none';
+        errorState.style.display = 'none';
+        // Reload page to render results server-side with Jinja
+        location.reload();
+    } else if (data.status === 'failed') {
+        procState.style.display = 'none';
+        errorState.style.display = 'block';
+        resultsState.style.display = 'none';
+        document.getElementById('error-msg').textContent = data.error_message || 'Unknown error';
+    } else {
+        procState.style.display = 'block';
+        errorState.style.display = 'none';
+        resultsState.style.display = 'none';
+
+        // Update progress
+        const step = data.current_step || 'Processing...';
+        document.getElementById('proc-step').textContent = step;
+        const done = data.detectors_done || 0;
+        const total = data.detectors_total || 6;
+        const pct = Math.round((done / total) * 100);
+        document.getElementById('proc-fill').style.width = pct + '%';
+        document.getElementById('proc-text').textContent = done + ' / ' + total;
+
+        if (data.status === 'uploading') {
+            document.getElementById('proc-title').textContent = 'Загрузка на сервер...';
+            document.getElementById('proc-fill').style.width = '15%';
+        } else if (data.status === 'running') {
+            document.getElementById('proc-title').textContent = 'Анализ фотографии...';
+        }
+    }
+}
+
+// Start polling if not finished
+if (currentStatus !== 'completed' && currentStatus !== 'failed') {
+    pollStatus();
+}
+</script>
+{% endblock %}
