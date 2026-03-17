@@ -1739,7 +1739,7 @@ a:hover {
     display: flex;
     align-items: center;
     justify-content: center;
-    min-height: 200px;
+    min-height: 160px;
     border: 2px dashed var(--border-color);
     border-radius: var(--radius-md);
     cursor: pointer;
@@ -1752,18 +1752,18 @@ a:hover {
 }
 .upload-zone-content {
     text-align: center;
-    padding: 2rem;
+    padding: 1.5rem 2rem;
 }
 .upload-icon {
-    width: 48px;
-    height: 48px;
+    width: 36px;
+    height: 36px;
     color: var(--text-tertiary);
-    margin-bottom: 1rem;
+    margin-bottom: 0.75rem;
 }
 .upload-text {
-    font-size: 1rem;
+    font-size: 0.95rem;
     color: var(--text-secondary);
-    margin-bottom: 0.5rem;
+    margin-bottom: 0.25rem;
 }
 .upload-link {
     color: var(--color-primary);
@@ -1771,8 +1771,28 @@ a:hover {
     cursor: pointer;
 }
 .upload-hint {
-    font-size: 0.85rem;
+    font-size: 0.8rem;
     color: var(--text-tertiary);
+    margin-bottom: 0;
+}
+.upload-divider {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin: 0.75rem 0;
+    color: var(--text-tertiary);
+    font-size: 0.8rem;
+}
+.upload-divider::before,
+.upload-divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border-color);
+}
+.upload-btn {
+    padding: 0.5rem 1.5rem;
+    font-size: 0.9rem;
 }
 
 .upload-preview {

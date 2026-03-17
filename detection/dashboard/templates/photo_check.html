@@ -4,20 +4,22 @@
 {% block content %}
 <div class="page-header">
     <h1>Проверка фото на дипфейк</h1>
-    <p class="page-subtitle">Загрузите фотографию и 6 нейросетей-детекторов проанализируют её за ~30-60 секунд</p>
+    <p class="page-subtitle">Загрузите фотографию и 5 детекторов дипфейков проанализируют её за ~30-60 секунд</p>
 </div>
 
 <!-- Upload Zone -->
 <div class="card photo-upload-card">
     <div id="upload-zone" class="upload-zone">
         <div class="upload-zone-content">
-            <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <svg class="upload-icon" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
                 <polyline points="17 8 12 3 7 8"/>
                 <line x1="12" y1="3" x2="12" y2="15"/>
             </svg>
-            <p class="upload-text">Перетащите фото сюда или <span class="upload-link">выберите файл</span></p>
+            <p class="upload-text">Перетащите фото сюда</p>
             <p class="upload-hint">JPEG или PNG, до 10 МБ</p>
+            <div class="upload-divider"><span>или</span></div>
+            <button type="button" class="btn btn-primary upload-btn" id="browse-btn">Выбрать файл</button>
         </div>
         <input type="file" id="file-input" accept=".jpg,.jpeg,.png" style="display:none">
     </div>
@@ -135,6 +137,10 @@ uploadZone.addEventListener('drop', (e) => {
     if (e.dataTransfer.files.length > 0) {
         handleFile(e.dataTransfer.files[0]);
     }
+});
+document.getElementById('browse-btn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    fileInput.click();
 });
 uploadZone.addEventListener('click', () => fileInput.click());
 fileInput.addEventListener('change', () => {
